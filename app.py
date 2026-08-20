@@ -125,11 +125,92 @@ def aplicar_tema_profissional():
         color: var(--hb-text);
     }
 
+
     /* Inputs */
     div[data-baseweb="input"] > div,
     div[data-baseweb="select"] > div,
+    div[data-baseweb="textarea"] > div,
+    textarea,
+    input {
+        background: #ffffff !important;
+        color: #111111 !important;
+        border: 1.5px solid #111111 !important;
+        border-radius: 7px !important;
+        box-shadow: none !important;
+    }
+
+    div[data-baseweb="input"] input,
+    div[data-baseweb="select"] input,
     textarea {
-        border-radius: 8px !important;
+        color: #111111 !important;
+        -webkit-text-fill-color: #111111 !important;
+    }
+
+    div[data-baseweb="select"] span,
+    div[data-baseweb="select"] div {
+        color: #111111 !important;
+    }
+
+    /* Campos focados */
+    div[data-baseweb="input"]:focus-within > div,
+    div[data-baseweb="select"]:focus-within > div,
+    div[data-baseweb="textarea"]:focus-within > div,
+    textarea:focus,
+    input:focus {
+        border-color: #ff5a00 !important;
+        box-shadow: 0 0 0 1px #ff5a00 !important;
+        outline: none !important;
+    }
+
+    /* Labels dos formulários */
+    label[data-testid="stWidgetLabel"],
+    .stTextInput label,
+    .stTextArea label,
+    .stSelectbox label,
+    .stNumberInput label,
+    .stDateInput label {
+        color: #111111 !important;
+        font-weight: 700 !important;
+    }
+
+    /* Placeholder */
+    input::placeholder,
+    textarea::placeholder {
+        color: #8a8a8a !important;
+        opacity: 1 !important;
+    }
+
+    /* Date input */
+    div[data-testid="stDateInput"] input {
+        background: #ffffff !important;
+        color: #111111 !important;
+        border: 1.5px solid #111111 !important;
+    }
+
+    /* Number input */
+    div[data-testid="stNumberInput"] input {
+        background: #ffffff !important;
+        color: #111111 !important;
+        border: 1.5px solid #111111 !important;
+    }
+
+    /* Multi/single select dropdown area */
+    div[data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+    }
+
+    /* Checkbox/radio text stays black in main content */
+    main label,
+    main p,
+    main span {
+        color: #111111;
+    }
+
+    /* Sidebar keeps white text */
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span {
+        color: #f9fafb !important;
     }
 
     /* Botões */
