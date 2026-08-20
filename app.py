@@ -2,6 +2,7 @@
 import os
 import io
 import re
+import calendar
 import smtplib
 from email.message import EmailMessage
 from datetime import date, datetime
@@ -35,15 +36,15 @@ def aplicar_tema_profissional():
     st.markdown("""
     <style>
     :root {
-        --hb-bg: #f6f8fb;
+        --hb-bg: #f4f4f5;
         --hb-card: #ffffff;
-        --hb-border: #e6eaf0;
-        --hb-text: #1f2937;
-        --hb-muted: #6b7280;
-        --hb-primary: #f97316;
-        --hb-primary-dark: #ea580c;
-        --hb-sidebar: #111827;
-        --hb-sidebar-muted: #9ca3af;
+        --hb-border: #dedede;
+        --hb-text: #111111;
+        --hb-muted: #666666;
+        --hb-primary: #ff5a00;
+        --hb-primary-dark: #d94b00;
+        --hb-sidebar: #0b0b0b;
+        --hb-sidebar-muted: #b5b5b5;
     }
 
     /* Página */
@@ -302,8 +303,197 @@ def aplicar_tema_profissional():
         font-size: .72rem;
         margin-top: .15rem;
     }
+
+    .hb-topbar {
+        border-top: 4px solid var(--hb-primary);
+    }
+
+    .hb-sidebar-logo {
+        border-bottom: 1px solid rgba(255,255,255,.12);
+    }
+
+    section[data-testid="stSidebar"] .stRadio label {
+        font-weight: 650;
+        font-size: .88rem;
+    }
+
+    section[data-testid="stSidebar"] .stRadio label:hover {
+        background: #1d1d1d;
+        border-left: 3px solid var(--hb-primary);
+    }
+
+    .hb-panel-title {
+        background: #111;
+        color: #fff;
+        padding: .62rem .8rem;
+        border-radius: 8px 8px 0 0;
+        font-size: .9rem;
+        font-weight: 800;
+        letter-spacing: .01em;
+    }
+
+    .hb-panel-body {
+        background: #fff;
+        border: 1px solid var(--hb-border);
+        border-top: 0;
+        border-radius: 0 0 8px 8px;
+        padding: .8rem;
+        margin-bottom: 1rem;
+    }
+
+    .hb-alert-danger {
+        display:flex;
+        align-items:flex-start;
+        gap:.75rem;
+        background:#fff;
+        border:1px solid #ef4444;
+        border-left:5px solid #ef4444;
+        padding:.8rem .9rem;
+        border-radius:8px;
+        margin-bottom:.6rem;
+    }
+
+    .hb-alert-warning {
+        display:flex;
+        align-items:flex-start;
+        gap:.75rem;
+        background:#fffaf5;
+        border:1px solid #ff9a5a;
+        border-left:5px solid var(--hb-primary);
+        padding:.8rem .9rem;
+        border-radius:8px;
+        margin-bottom:.6rem;
+    }
+
+    .hb-alert-ok {
+        display:flex;
+        align-items:flex-start;
+        gap:.75rem;
+        background:#fff;
+        border:1px solid #d4d4d4;
+        border-left:5px solid #111;
+        padding:.8rem .9rem;
+        border-radius:8px;
+        margin-bottom:.6rem;
+    }
+
+    .hb-alert-title {
+        color:#111;
+        font-size:.88rem;
+        font-weight:800;
+        margin-bottom:.12rem;
+    }
+
+    .hb-alert-sub {
+        color:#666;
+        font-size:.78rem;
+        line-height:1.35;
+    }
+
+    .hb-calendar {
+        background:#fff;
+        border:1px solid var(--hb-border);
+        border-radius:10px;
+        overflow:hidden;
+        min-height:250px;
+    }
+
+    .hb-calendar-head {
+        background:#111;
+        color:#fff;
+        padding:.65rem .75rem;
+        font-weight:800;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+    }
+
+    .hb-calendar-accent {
+        color:#ff6a00;
+        font-weight:900;
+    }
+
+    .hb-cal-grid {
+        display:grid;
+        grid-template-columns:repeat(7,1fr);
+        padding:.55rem;
+        gap:.18rem;
+    }
+
+    .hb-cal-dayname {
+        color:#777;
+        font-size:.69rem;
+        text-align:center;
+        font-weight:800;
+        padding:.25rem 0;
+    }
+
+    .hb-cal-day {
+        min-height:31px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        border-radius:6px;
+        font-size:.77rem;
+        color:#222;
+    }
+
+    .hb-cal-day.today {
+        background:#ff5a00;
+        color:white;
+        font-weight:900;
+    }
+
+    .hb-cal-day.selected {
+        outline:2px solid #111;
+        font-weight:900;
+    }
+
+    .hb-kpi-accent div[data-testid="stMetric"] {
+        border-top: 4px solid var(--hb-primary);
+    }
+
     </style>
     """, unsafe_allow_html=True)
+
+
+def render_calendario(data_ref):
+    nomes_meses = [
+        "", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ]
+    cal = calendar.Calendar(firstweekday=0)
+    semanas = cal.monthdayscalendar(data_ref.year, data_ref.month)
+    hoje = date.today()
+
+    cells = ""
+    for nome in ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]:
+        cells += f'<div class="hb-cal-dayname">{nome}</div>'
+
+    for semana in semanas:
+        for dia in semana:
+            if dia == 0:
+                cells += '<div class="hb-cal-day"></div>'
+            else:
+                classes = ["hb-cal-day"]
+                if dia == hoje.day and data_ref.month == hoje.month and data_ref.year == hoje.year:
+                    classes.append("today")
+                if dia == data_ref.day:
+                    classes.append("selected")
+                cells += f'<div class="{" ".join(classes)}">{dia}</div>'
+
+    st.markdown(
+        f"""
+        <div class="hb-calendar">
+            <div class="hb-calendar-head">
+                <span>{nomes_meses[data_ref.month]} {data_ref.year}</span>
+                <span class="hb-calendar-accent">{data_ref.strftime("%d/%m")}</span>
+            </div>
+            <div class="hb-cal-grid">{cells}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 def topo_sistema():
     st.markdown("""
@@ -863,6 +1053,109 @@ try:
         c3.metric("Ordens de serviço", total_os)
         c4.metric("Executado no mês", moeda(valor_mes))
 
+        # Alertas operacionais
+        hoje_alerta = date.today()
+        limite_30 = hoje_alerta.fromordinal(hoje_alerta.toordinal() - 30)
+        status_fechados = ["Fechada", "Faturada", "Recebida"]
+
+        atrasadas_30 = (
+            s.query(OrdemServico)
+            .filter(
+                OrdemServico.data <= limite_30,
+                ~OrdemServico.status.in_(status_fechados)
+            )
+            .order_by(OrdemServico.data.asc())
+            .all()
+        )
+
+        inicio_mes = hoje_alerta.replace(day=1)
+        if inicio_mes.month == 1:
+            inicio_mes_anterior = inicio_mes.replace(year=inicio_mes.year - 1, month=12)
+        else:
+            inicio_mes_anterior = inicio_mes.replace(month=inicio_mes.month - 1)
+
+        fim_mes_anterior = inicio_mes.fromordinal(inicio_mes.toordinal() - 1)
+
+        fechamento_anterior_aberto = (
+            s.query(OrdemServico)
+            .filter(
+                OrdemServico.data >= inicio_mes_anterior,
+                OrdemServico.data <= fim_mes_anterior,
+                ~OrdemServico.status.in_(status_fechados)
+            )
+            .all()
+        )
+
+        st.markdown('<div class="hb-panel-title">⚠ Avisos e pendências</div>', unsafe_allow_html=True)
+        st.markdown('<div class="hb-panel-body">', unsafe_allow_html=True)
+
+        if atrasadas_30:
+            total_atrasadas = 0
+            for _o in atrasadas_30:
+                _itens = s.query(ItemOS).filter(ItemOS.os_id == _o.id).all()
+                total_atrasadas += sum(float(i.quantidade) * float(i.valor_unitario) for i in _itens)
+            st.markdown(
+                f"""
+                <div class="hb-alert-danger">
+                    <div>🔴</div>
+                    <div>
+                        <div class="hb-alert-title">{len(atrasadas_30)} medição(ões)/OS com mais de 30 dias sem fechamento</div>
+                        <div class="hb-alert-sub">
+                            Valor acumulado estimado: <b>{moeda(total_atrasadas)}</b>.
+                            A OS mais antiga é de {atrasadas_30[0].data.strftime('%d/%m/%Y')}.
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                """
+                <div class="hb-alert-ok">
+                    <div>●</div>
+                    <div>
+                        <div class="hb-alert-title">Nenhuma medição acima de 30 dias pendente</div>
+                        <div class="hb-alert-sub">Os lançamentos antigos estão dentro do fluxo de fechamento.</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        if fechamento_anterior_aberto:
+            st.markdown(
+                f"""
+                <div class="hb-alert-warning">
+                    <div>🟠</div>
+                    <div>
+                        <div class="hb-alert-title">Fechamento mensal anterior ainda está em aberto</div>
+                        <div class="hb-alert-sub">
+                            Existem <b>{len(fechamento_anterior_aberto)}</b> OS do período
+                            {inicio_mes_anterior.strftime('%d/%m/%Y')} a {fim_mes_anterior.strftime('%d/%m/%Y')}
+                            ainda sem status Fechada/Faturada/Recebida.
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                """
+                <div class="hb-alert-ok">
+                    <div>●</div>
+                    <div>
+                        <div class="hb-alert-title">Fechamento do mês anterior sem pendências</div>
+                        <div class="hb-alert-sub">Não há OS abertas do mês anterior aguardando fechamento.</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
         st.markdown("### Atalhos rápidos")
         a1, a2, a3, a4 = st.columns(4)
         a1.info("**Clientes**\n\nCadastros e dados fiscais")
@@ -1357,15 +1650,22 @@ try:
                 obra_label = st.selectbox("Obra *", list(mapa_obra.keys()))
                 obra_id = mapa_obra[obra_label]
 
-                c1, c2, c3 = st.columns(3)
-                data_os = c1.date_input("Data da OS", value=date.today())
-                solicitante = c2.text_input("Solicitante")
-                responsavel = c3.text_input("Responsável Habisolute")
-                c4, c5, c6 = st.columns(3)
-                sol_cli = c4.text_input("Solicitação do cliente")
-                pedido = c5.text_input("Pedido de compra")
-                ccusto = c6.text_input("Centro de custo")
-                observacoes = st.text_area("Observações")
+                esquerda, direita = st.columns([2.2, 1])
+                with esquerda:
+                    c1, c2 = st.columns(2)
+                    data_os = c1.date_input("Data da OS", value=date.today())
+                    solicitante = c2.text_input("Solicitante")
+                    c3, c4 = st.columns(2)
+                    responsavel = c3.text_input("Responsável Habisolute")
+                    sol_cli = c4.text_input("Solicitação do cliente")
+                    c5, c6 = st.columns(2)
+                    pedido = c5.text_input("Pedido de compra")
+                    ccusto = c6.text_input("Centro de custo")
+                    observacoes = st.text_area("Observações")
+                with direita:
+                    st.markdown("##### Calendário")
+                    st.caption("Referência visual para o lançamento da OS")
+                    render_calendario(data_os)
 
                 st.markdown("#### Adicionar serviços")
                 servicos = s.query(Servico).filter(Servico.ativo == True).order_by(Servico.categoria, Servico.descricao).all()
@@ -1581,6 +1881,27 @@ try:
 
             if rows:
                 df = pd.DataFrame(rows)
+
+                pendentes_periodo = [
+                    o for o in ordens
+                    if o.status not in ["Fechada", "Faturada", "Recebida"]
+                ]
+                if pendentes_periodo:
+                    st.markdown(
+                        f"""
+                        <div class="hb-alert-warning">
+                            <div>🟠</div>
+                            <div>
+                                <div class="hb-alert-title">Pendências de fechamento no período</div>
+                                <div class="hb-alert-sub">
+                                    {len(pendentes_periodo)} OS ainda estão abertas/executadas/conferidas e precisam ser fechadas.
+                                </div>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
                 st.dataframe(df, use_container_width=True, hide_index=True)
                 st.metric("TOTAL DO PERÍODO", moeda(df["Total"].sum()))
                 excel = dataframe_excel_bytes(df, "Fechamento")
