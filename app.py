@@ -562,7 +562,8 @@ def obter_preco(s, cliente_id, obra_id, servico_id, data_ref=None):
     srv = s.query(Servico).get(servico_id)
     return float(srv.valor_padrao or 0) if srv else 0.0
 
-def gerar_pdf_os(s, os_id):
+
+def gerar_pdf_os(s, os_id, mostrar_precos=True):
     osrv = s.query(OrdemServico).get(os_id)
     cliente = s.query(Cliente).get(osrv.cliente_id)
     obra = s.query(Obra).get(osrv.obra_id)
@@ -576,11 +577,20 @@ def gerar_pdf_os(s, os_id):
     )
     styles = getSampleStyleSheet()
     story = []
+
     story.append(Paragraph("<b>HABISOLUTE ENGENHARIA E CONTROLE TECNOLÓGICO</b>", styles["Title"]))
-    story.append(Spacer(1, 5*mm))
-    story.append(Paragraph(f"<b>ORDEM DE SERVIÇO Nº {osrv.numero}</b>", styles["Heading2"]))
     story.append(Spacer(1, 3*mm))
-    endereco = ", ".join([x for x in [obra.logradouro, obra.numero, obra.bairro, obra.cidade, obra.uf] if x])
+
+    tipo_via = "VIA EMPRESA" if mostrar_precos else "VIA CLIENTE"
+    story.append(Paragraph(f"<b>ORDEM DE SERVIÇO Nº {osrv.numero} — {tipo_via}</b>", styles["Heading2"]))
+    story.append(Spacer(1, 3*mm))
+
+    endereco = ", ".join([
+        x for x in [
+            obra.logradouro, obra.numero, obra.bairro, obra.cidade, obra.uf
+        ] if x
+    ])
+
     dados = [
         ["Data", osrv.data.strftime("%d/%m/%Y")],
         ["Cliente", cliente.razao_social],
@@ -593,6 +603,7 @@ def gerar_pdf_os(s, os_id):
         ["Centro de custo", osrv.centro_custo or ""],
         ["Status", osrv.status],
     ]
+
     t = Table(dados, colWidths=[45*mm, 125*mm])
     t.setStyle(TableStyle([
         ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
@@ -603,35 +614,69 @@ def gerar_pdf_os(s, os_id):
     story.append(t)
     story.append(Spacer(1, 5*mm))
 
-    linhas = [["Código", "Serviço", "Qtd.", "Un.", "Unitário", "Total"]]
     total = 0
-    for item in itens:
-        srv = s.query(Servico).get(item.servico_id)
-        subt = float(item.quantidade) * float(item.valor_unitario)
-        total += subt
-        linhas.append([
-            srv.codigo if srv else "",
-            item.descricao_customizada or (srv.descricao if srv else ""),
-            f"{float(item.quantidade):.2f}".replace(".", ","),
-            srv.unidade if srv else "",
-            moeda(item.valor_unitario),
-            moeda(subt),
-        ])
-    linhas.append(["", "", "", "", "TOTAL", moeda(total)])
-    ti = Table(linhas, colWidths=[22*mm, 68*mm, 18*mm, 17*mm, 25*mm, 28*mm])
-    ti.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTNAME", (4,-1), (5,-1), "Helvetica-Bold"),
-        ("ALIGN", (2,1), (-1,-1), "RIGHT"),
-        ("VALIGN", (0,0), (-1,-1), "TOP"),
-    ]))
+
+    if mostrar_precos:
+        linhas = [["Código", "Serviço", "Qtd.", "Un.", "Unitário", "Total"]]
+        for item in itens:
+            srv = s.query(Servico).get(item.servico_id)
+            subt = float(item.quantidade) * float(item.valor_unitario)
+            total += subt
+            linhas.append([
+                srv.codigo if srv else "",
+                item.descricao_customizada or (srv.descricao if srv else ""),
+                f"{float(item.quantidade):.2f}".replace(".", ","),
+                srv.unidade if srv else "",
+                moeda(item.valor_unitario),
+                moeda(subt),
+            ])
+        linhas.append(["", "", "", "", "TOTAL", moeda(total)])
+
+        ti = Table(
+            linhas,
+            colWidths=[22*mm, 68*mm, 18*mm, 17*mm, 25*mm, 28*mm]
+        )
+        ti.setStyle(TableStyle([
+            ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+            ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTNAME", (4,-1), (5,-1), "Helvetica-Bold"),
+            ("ALIGN", (2,1), (-1,-1), "RIGHT"),
+            ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ]))
+    else:
+        linhas = [["Código", "Serviço", "Qtd.", "Unidade"]]
+        for item in itens:
+            srv = s.query(Servico).get(item.servico_id)
+            linhas.append([
+                srv.codigo if srv else "",
+                item.descricao_customizada or (srv.descricao if srv else ""),
+                f"{float(item.quantidade):.2f}".replace(".", ","),
+                srv.unidade if srv else "",
+            ])
+
+        ti = Table(
+            linhas,
+            colWidths=[28*mm, 102*mm, 25*mm, 25*mm]
+        )
+        ti.setStyle(TableStyle([
+            ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+            ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("ALIGN", (2,1), (-1,-1), "CENTER"),
+            ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ]))
+
     story.append(ti)
 
     if osrv.observacoes:
         story.append(Spacer(1, 5*mm))
-        story.append(Paragraph(f"<b>Observações:</b> {osrv.observacoes}", styles["BodyText"]))
+        story.append(
+            Paragraph(
+                f"<b>Observações:</b> {osrv.observacoes}",
+                styles["BodyText"]
+            )
+        )
 
     story.append(Spacer(1, 15*mm))
     ass = Table([
@@ -1425,7 +1470,8 @@ try:
                 df = pd.DataFrame(rows)
                 st.dataframe(df, use_container_width=True, hide_index=True)
 
-                pdf = gerar_pdf_os(s, o.id)
+                pdf_cliente = gerar_pdf_os(s, o.id, mostrar_precos=False)
+                pdf_empresa = gerar_pdf_os(s, o.id, mostrar_precos=True)
                 excel = dataframe_excel_bytes(df, f"OS {o.numero}")
                 b1, b2, b3 = st.columns(3)
                 b1.download_button(
