@@ -17,8 +17,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
@@ -753,6 +754,112 @@ def obter_preco(s, cliente_id, obra_id, servico_id, data_ref=None):
     return float(srv.valor_padrao or 0) if srv else 0.0
 
 
+
+def _pdf_header_footer(canvas, doc, titulo_curto="ORDEM DE SERVIÇO"):
+    canvas.saveState()
+    largura, altura = doc.pagesize
+    laranja = colors.HexColor("#FF5A00")
+    preto = colors.HexColor("#111111")
+    cinza = colors.HexColor("#6B7280")
+
+    # faixa superior
+    canvas.setFillColor(preto)
+    canvas.rect(0, altura - 18*mm, largura, 18*mm, fill=1, stroke=0)
+    canvas.setFillColor(laranja)
+    canvas.rect(0, altura - 20*mm, largura, 2*mm, fill=1, stroke=0)
+
+    canvas.setFillColor(colors.white)
+    canvas.setFont("Helvetica-Bold", 13)
+    canvas.drawString(15*mm, altura - 11.5*mm, "HABISOLUTE")
+
+    canvas.setFont("Helvetica", 7.5)
+    canvas.setFillColor(colors.HexColor("#D1D5DB"))
+    canvas.drawString(15*mm, altura - 15.5*mm, "ENGENHARIA E CONTROLE TECNOLÓGICO")
+
+    canvas.setFont("Helvetica-Bold", 8)
+    canvas.setFillColor(colors.white)
+    canvas.drawRightString(largura - 15*mm, altura - 12.5*mm, titulo_curto)
+
+    # rodapé
+    canvas.setStrokeColor(colors.HexColor("#E5E7EB"))
+    canvas.line(15*mm, 12*mm, largura - 15*mm, 12*mm)
+    canvas.setFillColor(cinza)
+    canvas.setFont("Helvetica", 7)
+    canvas.drawString(15*mm, 7.5*mm, "Documento gerado pelo sistema Habisolute OS")
+    canvas.drawRightString(
+        largura - 15*mm, 7.5*mm,
+        f"Página {canvas.getPageNumber()}"
+    )
+    canvas.restoreState()
+
+
+def _pdf_styles():
+    styles = getSampleStyleSheet()
+    return {
+        "title": ParagraphStyle(
+            "HBTitle",
+            parent=styles["Heading1"],
+            fontName="Helvetica-Bold",
+            fontSize=17,
+            leading=20,
+            textColor=colors.HexColor("#111111"),
+            spaceAfter=2*mm,
+        ),
+        "subtitle": ParagraphStyle(
+            "HBSubtitle",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=8.5,
+            leading=11,
+            textColor=colors.HexColor("#6B7280"),
+            spaceAfter=4*mm,
+        ),
+        "section": ParagraphStyle(
+            "HBSection",
+            parent=styles["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=9.5,
+            leading=12,
+            textColor=colors.HexColor("#111111"),
+            spaceBefore=2*mm,
+            spaceAfter=2*mm,
+        ),
+        "body": ParagraphStyle(
+            "HBBody",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor("#262626"),
+        ),
+        "small": ParagraphStyle(
+            "HBSmall",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=7.2,
+            leading=9,
+            textColor=colors.HexColor("#4B5563"),
+        ),
+        "white": ParagraphStyle(
+            "HBWhite",
+            parent=styles["BodyText"],
+            fontName="Helvetica-Bold",
+            fontSize=8,
+            leading=10,
+            textColor=colors.white,
+        ),
+    }
+
+
+def _safe_paragraph(value, style):
+    value = "" if value is None else str(value)
+    return Paragraph(value, style)
+
+def _esc(value):
+    value = "" if value is None else str(value)
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def gerar_pdf_os(s, os_id, mostrar_precos=True):
     osrv = s.query(OrdemServico).get(os_id)
     cliente = s.query(Cliente).get(osrv.cliente_id)
@@ -761,58 +868,260 @@ def gerar_pdf_os(s, os_id, mostrar_precos=True):
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        buffer, pagesize=A4,
-        rightMargin=15*mm, leftMargin=15*mm,
-        topMargin=15*mm, bottomMargin=15*mm
+        buffer,
+        pagesize=A4,
+        rightMargin=14*mm,
+        leftMargin=14*mm,
+        topMargin=27*mm,
+        bottomMargin=18*mm,
+        title=f"OS {osrv.numero}",
+        author="Habisolute"
     )
-    styles = getSampleStyleSheet()
+
+    styles = _pdf_styles()
+    laranja = colors.HexColor("#FF5A00")
+    preto = colors.HexColor("#111111")
+    borda = colors.HexColor("#E5E7EB")
+    fundo = colors.HexColor("#F7F7F8")
+    cinza = colors.HexColor("#6B7280")
+
     story = []
 
-    story.append(Paragraph("<b>HABISOLUTE ENGENHARIA E CONTROLE TECNOLÓGICO</b>", styles["Title"]))
-    story.append(Spacer(1, 3*mm))
+    tipo_via = "VIA EMPRESA - COM VALORES" if mostrar_precos else "VIA CLIENTE - SEM VALORES"
+    story.append(Paragraph(f"ORDEM DE SERVIÇO <font color='#FF5A00'>#{osrv.numero}</font>", styles["title"]))
+    story.append(Paragraph(
+        f"{tipo_via} &nbsp;&nbsp;•&nbsp;&nbsp; Emissão: {osrv.data.strftime('%d/%m/%Y')} &nbsp;&nbsp;•&nbsp;&nbsp; Status: {osrv.status}",
+        styles["subtitle"]
+    ))
 
-    tipo_via = "VIA EMPRESA" if mostrar_precos else "VIA CLIENTE"
-    story.append(Paragraph(f"<b>ORDEM DE SERVIÇO Nº {osrv.numero} — {tipo_via}</b>", styles["Heading2"]))
-    story.append(Spacer(1, 3*mm))
+    # Cliente / obra
+    story.append(Paragraph("DADOS DO CLIENTE E DA OBRA", styles["section"]))
 
-    endereco = ", ".join([
-        x for x in [
-            obra.logradouro, obra.numero, obra.bairro, obra.cidade, obra.uf
-        ] if x
-    ])
+    endereco_obra = ", ".join(
+        [x for x in [obra.logradouro, obra.numero, obra.bairro, obra.cidade, obra.uf] if x]
+    )
 
     dados = [
-        ["Data", osrv.data.strftime("%d/%m/%Y")],
-        ["Cliente", cliente.razao_social],
-        ["CNPJ", cliente.cnpj],
-        ["Obra", obra.nome],
-        ["Endereço", endereco],
-        ["Solicitante", osrv.solicitante or ""],
-        ["Responsável Habisolute", osrv.responsavel_habisolute or ""],
-        ["Pedido de compra", osrv.pedido_compra or ""],
-        ["Centro de custo", osrv.centro_custo or ""],
-        ["Status", osrv.status],
+        [
+            _safe_paragraph("<b>Cliente</b><br/>" + _esc(cliente.razao_social or ""), styles["body"]),
+            _safe_paragraph("<b>CNPJ</b><br/>" + _esc(cliente.cnpj or ""), styles["body"]),
+        ],
+        [
+            _safe_paragraph("<b>Obra</b><br/>" + _esc(obra.nome or ""), styles["body"]),
+            _safe_paragraph("<b>Endereço</b><br/>" + _esc(endereco_obra or "-"), styles["body"]),
+        ],
+        [
+            _safe_paragraph("<b>Solicitante</b><br/>" + _esc(osrv.solicitante or "-"), styles["body"]),
+            _safe_paragraph("<b>Responsável Habisolute</b><br/>" + _esc(osrv.responsavel_habisolute or "-"), styles["body"]),
+        ],
+        [
+            _safe_paragraph("<b>Pedido de compra</b><br/>" + _esc(osrv.pedido_compra or "-"), styles["body"]),
+            _safe_paragraph("<b>Centro de custo</b><br/>" + _esc(osrv.centro_custo or "-"), styles["body"]),
+        ],
     ]
 
-    t = Table(dados, colWidths=[45*mm, 125*mm])
-    t.setStyle(TableStyle([
-        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-        ("BACKGROUND", (0,0), (0,-1), colors.lightgrey),
+    td = Table(dados, colWidths=[91*mm, 91*mm])
+    td.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,-1), fundo),
+        ("BOX", (0,0), (-1,-1), 0.7, borda),
+        ("INNERGRID", (0,0), (-1,-1), 0.4, borda),
         ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+        ("LEFTPADDING", (0,0), (-1,-1), 8),
+        ("RIGHTPADDING", (0,0), (-1,-1), 8),
+        ("TOPPADDING", (0,0), (-1,-1), 7),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 7),
     ]))
-    story.append(t)
+    story.append(td)
     story.append(Spacer(1, 5*mm))
 
-    total = 0
+    # Serviços
+    story.append(Paragraph("SERVIÇOS EXECUTADOS", styles["section"]))
 
+    total = 0.0
     if mostrar_precos:
-        linhas = [["Código", "Serviço", "Qtd.", "Un.", "Unitário", "Total"]]
+        cab = ["CÓDIGO", "SERVIÇO", "QTD.", "UN.", "VALOR UNIT.", "TOTAL"]
+        linhas = [[_safe_paragraph(x, styles["white"]) for x in cab]]
         for item in itens:
             srv = s.query(Servico).get(item.servico_id)
             subt = float(item.quantidade) * float(item.valor_unitario)
             total += subt
             linhas.append([
+                _safe_paragraph(_esc(srv.codigo if srv else ""), styles["small"]),
+                _safe_paragraph(_esc(item.descricao_customizada or (srv.descricao if srv else "")), styles["small"]),
+                f"{float(item.quantidade):.2f}".replace(".", ","),
+                srv.unidade if srv else "",
+                moeda(item.valor_unitario),
+                moeda(subt),
+            ])
+        ts = Table(linhas, colWidths=[22*mm, 66*mm, 16*mm, 16*mm, 30*mm, 32*mm], repeatRows=1)
+    else:
+        cab = ["CÓDIGO", "SERVIÇO", "QTD.", "UNIDADE"]
+        linhas = [[_safe_paragraph(x, styles["white"]) for x in cab]]
+        for item in itens:
+            srv = s.query(Servico).get(item.servico_id)
+            linhas.append([
+                _safe_paragraph(_esc(srv.codigo if srv else ""), styles["small"]),
+                _safe_paragraph(_esc(item.descricao_customizada or (srv.descricao if srv else "")), styles["small"]),
+                f"{float(item.quantidade):.2f}".replace(".", ","),
+                srv.unidade if srv else "",
+            ])
+        ts = Table(linhas, colWidths=[27*mm, 105*mm, 23*mm, 27*mm], repeatRows=1)
+
+    table_style = [
+        ("BACKGROUND", (0,0), (-1,0), preto),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("BOX", (0,0), (-1,-1), 0.7, borda),
+        ("INNERGRID", (0,1), (-1,-1), 0.35, borda),
+        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#FAFAFA")]),
+        ("LEFTPADDING", (0,0), (-1,-1), 6),
+        ("RIGHTPADDING", (0,0), (-1,-1), 6),
+        ("TOPPADDING", (0,0), (-1,-1), 6),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ("FONTSIZE", (0,1), (-1,-1), 7.5),
+    ]
+    if mostrar_precos:
+        table_style.extend([
+            ("ALIGN", (2,1), (-1,-1), "RIGHT"),
+        ])
+    else:
+        table_style.extend([
+            ("ALIGN", (2,1), (-1,-1), "CENTER"),
+        ])
+
+    ts.setStyle(TableStyle(table_style))
+    story.append(ts)
+
+    if mostrar_precos:
+        story.append(Spacer(1, 4*mm))
+        total_box = Table([
+            [
+                _safe_paragraph("TOTAL DA ORDEM DE SERVIÇO", styles["white"]),
+                _safe_paragraph(moeda(total), styles["white"])
+            ]
+        ], colWidths=[120*mm, 62*mm])
+        total_box.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (0,0), preto),
+            ("BACKGROUND", (1,0), (1,0), laranja),
+            ("ALIGN", (1,0), (1,0), "RIGHT"),
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ("LEFTPADDING", (0,0), (-1,-1), 9),
+            ("RIGHTPADDING", (0,0), (-1,-1), 9),
+            ("TOPPADDING", (0,0), (-1,-1), 8),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+        ]))
+        story.append(total_box)
+
+    if osrv.observacoes:
+        story.append(Spacer(1, 5*mm))
+        story.append(Paragraph("OBSERVAÇÕES", styles["section"]))
+        obs_box = Table(
+            [[_safe_paragraph(_esc(osrv.observacoes), styles["body"])]],
+            colWidths=[182*mm]
+        )
+        obs_box.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,-1), fundo),
+            ("BOX", (0,0), (-1,-1), 0.7, borda),
+            ("LEFTPADDING", (0,0), (-1,-1), 8),
+            ("RIGHTPADDING", (0,0), (-1,-1), 8),
+            ("TOPPADDING", (0,0), (-1,-1), 8),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+        ]))
+        story.append(obs_box)
+
+    story.append(Spacer(1, 13*mm))
+
+    assinatura = Table([
+        ["", ""],
+        ["Responsável Habisolute", "Cliente / Solicitante"],
+    ], colWidths=[86*mm, 86*mm], rowHeights=[12*mm, 6*mm])
+    assinatura.setStyle(TableStyle([
+        ("LINEABOVE", (0,1), (0,1), 0.7, preto),
+        ("LINEABOVE", (1,1), (1,1), 0.7, preto),
+        ("ALIGN", (0,1), (-1,1), "CENTER"),
+        ("TEXTCOLOR", (0,1), (-1,1), cinza),
+        ("FONTSIZE", (0,1), (-1,1), 7.5),
+    ]))
+    story.append(assinatura)
+
+    titulo_curto = "OS - VIA EMPRESA" if mostrar_precos else "OS - VIA CLIENTE"
+    doc.build(
+        story,
+        onFirstPage=lambda c, d: _pdf_header_footer(c, d, titulo_curto),
+        onLaterPages=lambda c, d: _pdf_header_footer(c, d, titulo_curto),
+    )
+
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def gerar_pdf_fechamento(s, ordens, inicio, fim, cliente_id=None, obra_id=None):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=12*mm,
+        leftMargin=12*mm,
+        topMargin=27*mm,
+        bottomMargin=18*mm,
+        title="Fechamento mensal Habisolute",
+        author="Habisolute"
+    )
+
+    styles = _pdf_styles()
+    preto = colors.HexColor("#111111")
+    laranja = colors.HexColor("#FF5A00")
+    borda = colors.HexColor("#E5E7EB")
+    fundo = colors.HexColor("#F7F7F8")
+
+    story = []
+
+    cliente_nome = "Todos os clientes"
+    obra_nome = "Todas as obras"
+
+    if cliente_id:
+        cli = s.query(Cliente).get(cliente_id)
+        if cli:
+            cliente_nome = cli.razao_social
+    if obra_id:
+        obr = s.query(Obra).get(obra_id)
+        if obr:
+            obra_nome = obr.nome
+
+    story.append(Paragraph("FECHAMENTO DE SERVIÇOS", styles["title"]))
+    story.append(Paragraph(
+        f"Período: {inicio.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')} &nbsp;&nbsp;•&nbsp;&nbsp; "
+        f"Cliente: {cliente_nome} &nbsp;&nbsp;•&nbsp;&nbsp; Obra: {obra_nome}",
+        styles["subtitle"]
+    ))
+
+    total_geral = 0.0
+    qtd_os = len(ordens)
+    qtd_itens = 0
+    pendentes = 0
+
+    detalhes = []
+    resumo_os = []
+
+    for o in ordens:
+        cli = s.query(Cliente).get(o.cliente_id)
+        obra = s.query(Obra).get(o.obra_id)
+        itens = s.query(ItemOS).filter(ItemOS.os_id == o.id).all()
+        total_os = 0.0
+        qtd_itens += len(itens)
+        if o.status not in ["Fechada", "Faturada", "Recebida"]:
+            pendentes += 1
+
+        for item in itens:
+            srv = s.query(Servico).get(item.servico_id)
+            subt = float(item.quantidade) * float(item.valor_unitario)
+            total_os += subt
+            total_geral += subt
+            detalhes.append([
+                o.numero,
+                o.data.strftime("%d/%m/%Y"),
+                cli.razao_social if cli else "",
+                obra.nome if obra else "",
                 srv.codigo if srv else "",
                 item.descricao_customizada or (srv.descricao if srv else ""),
                 f"{float(item.quantidade):.2f}".replace(".", ","),
@@ -820,65 +1129,117 @@ def gerar_pdf_os(s, os_id, mostrar_precos=True):
                 moeda(item.valor_unitario),
                 moeda(subt),
             ])
-        linhas.append(["", "", "", "", "TOTAL", moeda(total)])
 
-        ti = Table(
-            linhas,
-            colWidths=[22*mm, 68*mm, 18*mm, 17*mm, 25*mm, 28*mm]
-        )
-        ti.setStyle(TableStyle([
-            ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-            ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTNAME", (4,-1), (5,-1), "Helvetica-Bold"),
-            ("ALIGN", (2,1), (-1,-1), "RIGHT"),
-            ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ]))
-    else:
-        linhas = [["Código", "Serviço", "Qtd.", "Unidade"]]
-        for item in itens:
-            srv = s.query(Servico).get(item.servico_id)
-            linhas.append([
-                srv.codigo if srv else "",
-                item.descricao_customizada or (srv.descricao if srv else ""),
-                f"{float(item.quantidade):.2f}".replace(".", ","),
-                srv.unidade if srv else "",
-            ])
+        resumo_os.append([
+            o.numero,
+            o.data.strftime("%d/%m/%Y"),
+            obra.nome if obra else "",
+            o.status,
+            moeda(total_os)
+        ])
 
-        ti = Table(
-            linhas,
-            colWidths=[28*mm, 102*mm, 25*mm, 25*mm]
-        )
-        ti.setStyle(TableStyle([
-            ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
-            ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
-            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("ALIGN", (2,1), (-1,-1), "CENTER"),
-            ("VALIGN", (0,0), (-1,-1), "TOP"),
-        ]))
+    # KPIs
+    kpis = Table([
+        [
+            _safe_paragraph(f"<b>{qtd_os}</b><br/>Ordens de serviço", styles["body"]),
+            _safe_paragraph(f"<b>{qtd_itens}</b><br/>Itens lançados", styles["body"]),
+            _safe_paragraph(f"<b>{pendentes}</b><br/>OS pendentes", styles["body"]),
+            _safe_paragraph(f"<b>{moeda(total_geral)}</b><br/>Total do período", styles["body"]),
+        ]
+    ], colWidths=[65*mm, 65*mm, 65*mm, 65*mm])
+    kpis.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,-1), fundo),
+        ("BOX", (0,0), (-1,-1), 0.7, borda),
+        ("INNERGRID", (0,0), (-1,-1), 0.4, borda),
+        ("ALIGN", (0,0), (-1,-1), "CENTER"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("TOPPADDING", (0,0), (-1,-1), 9),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 9),
+    ]))
+    story.append(kpis)
+    story.append(Spacer(1, 5*mm))
 
-    story.append(ti)
+    story.append(Paragraph("RESUMO POR ORDEM DE SERVIÇO", styles["section"]))
+    resumo_header = ["OS", "DATA", "OBRA", "STATUS", "TOTAL"]
+    resumo_data = [[_safe_paragraph(x, styles["white"]) for x in resumo_header]] + resumo_os
+    tr = Table(resumo_data, colWidths=[35*mm, 30*mm, 115*mm, 38*mm, 42*mm], repeatRows=1)
+    tr.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), preto),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#FAFAFA")]),
+        ("BOX", (0,0), (-1,-1), 0.7, borda),
+        ("INNERGRID", (0,1), (-1,-1), 0.35, borda),
+        ("ALIGN", (4,1), (4,-1), "RIGHT"),
+        ("FONTSIZE", (0,1), (-1,-1), 7.4),
+        ("TOPPADDING", (0,0), (-1,-1), 5),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+    ]))
+    story.append(tr)
+    story.append(Spacer(1, 5*mm))
 
-    if osrv.observacoes:
-        story.append(Spacer(1, 5*mm))
-        story.append(
-            Paragraph(
-                f"<b>Observações:</b> {osrv.observacoes}",
-                styles["BodyText"]
-            )
-        )
+    story.append(Paragraph("DETALHAMENTO DOS SERVIÇOS", styles["section"]))
+    det_header = ["OS", "DATA", "CLIENTE", "OBRA", "CÓD.", "SERVIÇO", "QTD.", "UN.", "UNITÁRIO", "TOTAL"]
+    det_data = [[_safe_paragraph(x, styles["white"]) for x in det_header]]
+    for row in detalhes:
+        det_data.append([
+            _safe_paragraph(_esc(row[0]), styles["small"]),
+            row[1],
+            _safe_paragraph(_esc(row[2]), styles["small"]),
+            _safe_paragraph(_esc(row[3]), styles["small"]),
+            row[4],
+            _safe_paragraph(_esc(row[5]), styles["small"]),
+            row[6],
+            row[7],
+            row[8],
+            row[9],
+        ])
 
-    story.append(Spacer(1, 15*mm))
-    ass = Table([
-        ["____________________________________", "____________________________________"],
-        ["Responsável Habisolute", "Cliente / Solicitante"],
-    ], colWidths=[85*mm, 85*mm])
-    ass.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER")]))
-    story.append(ass)
+    td = Table(
+        det_data,
+        colWidths=[27*mm, 24*mm, 48*mm, 45*mm, 22*mm, 66*mm, 18*mm, 18*mm, 28*mm, 30*mm],
+        repeatRows=1
+    )
+    td.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), preto),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#FAFAFA")]),
+        ("BOX", (0,0), (-1,-1), 0.7, borda),
+        ("INNERGRID", (0,1), (-1,-1), 0.3, borda),
+        ("ALIGN", (6,1), (-1,-1), "RIGHT"),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("FONTSIZE", (0,1), (-1,-1), 6.7),
+        ("TOPPADDING", (0,0), (-1,-1), 4),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+    ]))
+    story.append(td)
+    story.append(Spacer(1, 5*mm))
 
-    doc.build(story)
+    total_box = Table([
+        [
+            _safe_paragraph("TOTAL DO FECHAMENTO", styles["white"]),
+            _safe_paragraph(moeda(total_geral), styles["white"])
+        ]
+    ], colWidths=[205*mm, 55*mm])
+    total_box.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (0,0), preto),
+        ("BACKGROUND", (1,0), (1,0), laranja),
+        ("ALIGN", (1,0), (1,0), "RIGHT"),
+        ("LEFTPADDING", (0,0), (-1,-1), 9),
+        ("RIGHTPADDING", (0,0), (-1,-1), 9),
+        ("TOPPADDING", (0,0), (-1,-1), 8),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 8),
+    ]))
+    story.append(total_box)
+
+    doc.build(
+        story,
+        onFirstPage=lambda c, d: _pdf_header_footer(c, d, "FECHAMENTO MENSAL"),
+        onLaterPages=lambda c, d: _pdf_header_footer(c, d, "FECHAMENTO MENSAL"),
+    )
+
     buffer.seek(0)
     return buffer.getvalue()
+
 
 def dataframe_excel_bytes(df, sheet_name="Dados"):
     out = io.BytesIO()
@@ -1773,19 +2134,36 @@ try:
                 pdf_cliente = gerar_pdf_os(s, o.id, mostrar_precos=False)
                 pdf_empresa = gerar_pdf_os(s, o.id, mostrar_precos=True)
                 excel = dataframe_excel_bytes(df, f"OS {o.numero}")
-                b1, b2, b3 = st.columns(3)
+                b1, b2, b3, b4 = st.columns(4)
                 b1.download_button(
-                    "🧾 Via Cliente", pdf_cliente,
-                    file_name=f"OS_{o.numero}_CLIENTE.pdf", mime="application/pdf",
-                    key=f"pdf_{o.id}"
+                    "🧾 Imprimir Via Cliente",
+                    pdf_cliente,
+                    file_name=f"OS_{o.numero}_CLIENTE.pdf",
+                    mime="application/pdf",
+                    key=f"pdf_cliente_{o.id}",
+                    use_container_width=True
                 )
                 b2.download_button(
-                    "📊 Exportar OS em Excel", excel,
+                    "💼 Imprimir Via Empresa",
+                    pdf_empresa,
+                    file_name=f"OS_{o.numero}_EMPRESA.pdf",
+                    mime="application/pdf",
+                    key=f"pdf_empresa_{o.id}",
+                    use_container_width=True
+                )
+                b3.download_button(
+                    "📊 Exportar Excel",
+                    excel,
                     file_name=f"OS_{o.numero}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"xls_{o.id}"
+                    key=f"xls_{o.id}",
+                    use_container_width=True
                 )
-                if b3.button("✉️ Enviar OS por e-mail", key=f"abrir_email_{o.id}"):
+                if b4.button(
+                    "✉️ Enviar ao cliente",
+                    key=f"abrir_email_{o.id}",
+                    use_container_width=True
+                ):
                     st.session_state[f"email_os_{o.id}"] = True
 
                 if st.session_state.get(f"email_os_{o.id}", False):
@@ -1905,11 +2283,29 @@ try:
                 st.dataframe(df, use_container_width=True, hide_index=True)
                 st.metric("TOTAL DO PERÍODO", moeda(df["Total"].sum()))
                 excel = dataframe_excel_bytes(df, "Fechamento")
-                st.download_button(
+                pdf_fechamento = gerar_pdf_fechamento(
+                    s,
+                    ordens,
+                    inicio,
+                    fim,
+                    cliente_id=cliente_id,
+                    obra_id=obra_id
+                )
+
+                fb1, fb2 = st.columns(2)
+                fb1.download_button(
+                    "📄 Imprimir fechamento em PDF",
+                    pdf_fechamento,
+                    file_name=f"Fechamento_{inicio.strftime('%Y%m%d')}_{fim.strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+                fb2.download_button(
                     "📊 Exportar fechamento para Excel",
                     excel,
                     file_name=f"Fechamento_{inicio.strftime('%Y%m%d')}_{fim.strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
                 )
             else:
                 st.info("Nenhuma OS encontrada para o período selecionado.")
