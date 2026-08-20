@@ -1354,7 +1354,7 @@ def gerar_pdf_fechamento(s, ordens, inicio, fim, cliente_id=None, obra_id=None):
 
     # Assinaturas do fechamento
     story.append(Spacer(1, 14*mm))
-    story.append(Paragraph("APROVAÇÃO DO FECHAMENTO", styles["section"]))
+    story.append(Paragraph("ASSINATURAS DA MEDIÇÃO", styles["section"]))
     story.append(Spacer(1, 7*mm))
 
     assinatura_fechamento = Table([
