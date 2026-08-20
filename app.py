@@ -639,6 +639,7 @@ class ItemOS(Base):
     id = Column(Integer, primary_key=True)
     os_id = Column(Integer, ForeignKey("ordens_servico.id"), nullable=False)
     servico_id = Column(Integer, ForeignKey("servicos.id"), nullable=False)
+    data_servico = Column(Date)
     quantidade = Column(Numeric(12, 2), nullable=False)
     valor_unitario = Column(Numeric(12, 2), nullable=False)
     descricao_customizada = Column(String(250))
@@ -656,6 +657,38 @@ class HistoricoEnvio(Base):
 
 
 Base.metadata.create_all(bind=engine)
+
+
+def aplicar_migracoes_simples():
+    """Adiciona colunas novas em bancos existentes sem apagar dados."""
+    from sqlalchemy import inspect, text as sql_text
+    insp = inspect(engine)
+    if "itens_os" in insp.get_table_names():
+        cols = {c["name"] for c in insp.get_columns("itens_os")}
+        if "data_servico" not in cols:
+            with engine.begin() as conn:
+                conn.execute(sql_text("ALTER TABLE itens_os ADD COLUMN data_servico DATE"))
+
+aplicar_migracoes_simples()
+
+
+def preencher_datas_servicos_antigos():
+    """Para itens antigos, usa a data original da OS como data do serviço."""
+    s = SessionLocal()
+    try:
+        itens_sem_data = s.query(ItemOS).filter(ItemOS.data_servico.is_(None)).all()
+        alterou = False
+        for item in itens_sem_data:
+            osrv = s.query(OrdemServico).get(item.os_id)
+            if osrv:
+                item.data_servico = osrv.data
+                alterou = True
+        if alterou:
+            s.commit()
+    finally:
+        s.close()
+
+preencher_datas_servicos_antigos()
 
 
 # =========================
@@ -939,13 +972,14 @@ def gerar_pdf_os(s, os_id, mostrar_precos=True):
 
     total = 0.0
     if mostrar_precos:
-        cab = ["CÓDIGO", "SERVIÇO", "QTD.", "UN.", "VALOR UNIT.", "TOTAL"]
+        cab = ["DATA", "CÓDIGO", "SERVIÇO", "QTD.", "UN.", "VALOR UNIT.", "TOTAL"]
         linhas = [[_safe_paragraph(x, styles["white"]) for x in cab]]
         for item in itens:
             srv = s.query(Servico).get(item.servico_id)
             subt = float(item.quantidade) * float(item.valor_unitario)
             total += subt
             linhas.append([
+                item.data_servico.strftime("%d/%m/%Y") if item.data_servico else osrv.data.strftime("%d/%m/%Y"),
                 _safe_paragraph(_esc(srv.codigo if srv else ""), styles["small"]),
                 _safe_paragraph(_esc(item.descricao_customizada or (srv.descricao if srv else "")), styles["small"]),
                 f"{float(item.quantidade):.2f}".replace(".", ","),
@@ -953,19 +987,20 @@ def gerar_pdf_os(s, os_id, mostrar_precos=True):
                 moeda(item.valor_unitario),
                 moeda(subt),
             ])
-        ts = Table(linhas, colWidths=[22*mm, 66*mm, 16*mm, 16*mm, 30*mm, 32*mm], repeatRows=1)
+        ts = Table(linhas, colWidths=[23*mm, 19*mm, 57*mm, 15*mm, 15*mm, 27*mm, 26*mm], repeatRows=1)
     else:
-        cab = ["CÓDIGO", "SERVIÇO", "QTD.", "UNIDADE"]
+        cab = ["DATA", "CÓDIGO", "SERVIÇO", "QTD.", "UNIDADE"]
         linhas = [[_safe_paragraph(x, styles["white"]) for x in cab]]
         for item in itens:
             srv = s.query(Servico).get(item.servico_id)
             linhas.append([
+                item.data_servico.strftime("%d/%m/%Y") if item.data_servico else osrv.data.strftime("%d/%m/%Y"),
                 _safe_paragraph(_esc(srv.codigo if srv else ""), styles["small"]),
                 _safe_paragraph(_esc(item.descricao_customizada or (srv.descricao if srv else "")), styles["small"]),
                 f"{float(item.quantidade):.2f}".replace(".", ","),
                 srv.unidade if srv else "",
             ])
-        ts = Table(linhas, colWidths=[27*mm, 105*mm, 23*mm, 27*mm], repeatRows=1)
+        ts = Table(linhas, colWidths=[28*mm, 24*mm, 91*mm, 19*mm, 20*mm], repeatRows=1)
 
     table_style = [
         ("BACKGROUND", (0,0), (-1,0), preto),
@@ -982,11 +1017,11 @@ def gerar_pdf_os(s, os_id, mostrar_precos=True):
     ]
     if mostrar_precos:
         table_style.extend([
-            ("ALIGN", (2,1), (-1,-1), "RIGHT"),
+            ("ALIGN", (3,1), (-1,-1), "RIGHT"),
         ])
     else:
         table_style.extend([
-            ("ALIGN", (2,1), (-1,-1), "CENTER"),
+            ("ALIGN", (3,1), (-1,-1), "CENTER"),
         ])
 
     ts.setStyle(TableStyle(table_style))
@@ -1120,6 +1155,7 @@ def gerar_pdf_fechamento(s, ordens, inicio, fim, cliente_id=None, obra_id=None):
             detalhes.append([
                 o.numero,
                 o.data.strftime("%d/%m/%Y"),
+                (item.data_servico or o.data).strftime("%d/%m/%Y"),
                 cli.razao_social if cli else "",
                 obra.nome if obra else "",
                 srv.codigo if srv else "",
@@ -1178,25 +1214,26 @@ def gerar_pdf_fechamento(s, ordens, inicio, fim, cliente_id=None, obra_id=None):
     story.append(Spacer(1, 5*mm))
 
     story.append(Paragraph("DETALHAMENTO DOS SERVIÇOS", styles["section"]))
-    det_header = ["OS", "DATA", "CLIENTE", "OBRA", "CÓD.", "SERVIÇO", "QTD.", "UN.", "UNITÁRIO", "TOTAL"]
+    det_header = ["OS", "DATA OS", "DATA SERV.", "CLIENTE", "OBRA", "CÓD.", "SERVIÇO", "QTD.", "UN.", "UNITÁRIO", "TOTAL"]
     det_data = [[_safe_paragraph(x, styles["white"]) for x in det_header]]
     for row in detalhes:
         det_data.append([
             _safe_paragraph(_esc(row[0]), styles["small"]),
             row[1],
-            _safe_paragraph(_esc(row[2]), styles["small"]),
+            row[2],
             _safe_paragraph(_esc(row[3]), styles["small"]),
-            row[4],
-            _safe_paragraph(_esc(row[5]), styles["small"]),
-            row[6],
+            _safe_paragraph(_esc(row[4]), styles["small"]),
+            row[5],
+            _safe_paragraph(_esc(row[6]), styles["small"]),
             row[7],
             row[8],
             row[9],
+            row[10],
         ])
 
     td = Table(
         det_data,
-        colWidths=[27*mm, 24*mm, 48*mm, 45*mm, 22*mm, 66*mm, 18*mm, 18*mm, 28*mm, 30*mm],
+        colWidths=[23*mm, 22*mm, 24*mm, 40*mm, 38*mm, 18*mm, 58*mm, 15*mm, 15*mm, 25*mm, 27*mm],
         repeatRows=1
     )
     td.setStyle(TableStyle([
@@ -1205,7 +1242,7 @@ def gerar_pdf_fechamento(s, ordens, inicio, fim, cliente_id=None, obra_id=None):
         ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#FAFAFA")]),
         ("BOX", (0,0), (-1,-1), 0.7, borda),
         ("INNERGRID", (0,1), (-1,-1), 0.3, borda),
-        ("ALIGN", (6,1), (-1,-1), "RIGHT"),
+        ("ALIGN", (7,1), (-1,-1), "RIGHT"),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
         ("FONTSIZE", (0,1), (-1,-1), 6.7),
         ("TOPPADDING", (0,0), (-1,-1), 4),
@@ -2035,10 +2072,11 @@ try:
                 srv_id = mapa_srv[srv_label]
                 preco_sugerido = obter_preco(s, cliente_id, obra_id, srv_id, data_os)
 
-                a1, a2, a3 = st.columns(3)
-                qtd = a1.number_input("Quantidade", min_value=0.01, value=1.0, step=1.0)
-                valor_unit = a2.number_input("Valor unitário", min_value=0.0, value=float(preco_sugerido), step=1.0, format="%.2f")
-                desc_custom = a3.text_input("Descrição personalizada", placeholder="Opcional")
+                a1, a2, a3, a4 = st.columns(4)
+                data_servico = a1.date_input("Data do serviço", value=data_os, key="data_servico_item")
+                qtd = a2.number_input("Quantidade", min_value=0.01, value=1.0, step=1.0)
+                valor_unit = a3.number_input("Valor unitário", min_value=0.0, value=float(preco_sugerido), step=1.0, format="%.2f")
+                desc_custom = a4.text_input("Descrição personalizada", placeholder="Opcional")
 
                 if st.button("➕ Adicionar item"):
                     srv = s.query(Servico).get(srv_id)
@@ -2047,6 +2085,7 @@ try:
                         "codigo": srv.codigo,
                         "descricao": desc_custom or srv.descricao,
                         "unidade": srv.unidade,
+                        "data_servico": data_servico,
                         "quantidade": float(qtd),
                         "valor_unitario": float(valor_unit),
                     })
@@ -2056,8 +2095,21 @@ try:
                     df_itens = pd.DataFrame(st.session_state.itens_os_temp)
                     df_show = df_itens.copy()
                     df_show["total"] = df_show["quantidade"] * df_show["valor_unitario"]
-                    st.dataframe(df_show[["codigo","descricao","unidade","quantidade","valor_unitario","total"]],
-                                 use_container_width=True, hide_index=True)
+                    df_show["data_servico"] = pd.to_datetime(df_show["data_servico"]).dt.strftime("%d/%m/%Y")
+                    st.dataframe(
+                        df_show[["data_servico","codigo","descricao","unidade","quantidade","valor_unitario","total"]],
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "data_servico": "Data do serviço",
+                            "codigo": "Código",
+                            "descricao": "Serviço",
+                            "unidade": "Unidade",
+                            "quantidade": "Qtd.",
+                            "valor_unitario": st.column_config.NumberColumn("Valor unit.", format="R$ %.2f"),
+                            "total": st.column_config.NumberColumn("Total", format="R$ %.2f"),
+                        }
+                    )
                     total_os = float(df_show["total"].sum())
                     st.metric("Total da OS", moeda(total_os))
 
@@ -2077,7 +2129,9 @@ try:
                         s.flush()
                         for item in st.session_state.itens_os_temp:
                             s.add(ItemOS(
-                                os_id=nova.id, servico_id=item["servico_id"],
+                                os_id=nova.id,
+                                servico_id=item["servico_id"],
+                                data_servico=item.get("data_servico") or data_os,
                                 quantidade=item["quantidade"],
                                 valor_unitario=item["valor_unitario"],
                                 descricao_customizada=item["descricao"]
@@ -2121,6 +2175,7 @@ try:
                 for i in itens:
                     srv = s.query(Servico).get(i.servico_id)
                     rows.append({
+                        "Data do serviço": i.data_servico or o.data,
                         "Código": srv.codigo if srv else "",
                         "Serviço": i.descricao_customizada or (srv.descricao if srv else ""),
                         "Qtd.": float(i.quantidade),
@@ -2243,7 +2298,8 @@ try:
                     total = float(i.quantidade) * float(i.valor_unitario)
                     rows.append({
                         "OS": o.numero,
-                        "Data": o.data,
+                        "Data da OS": o.data,
+                        "Data do serviço": i.data_servico or o.data,
                         "Cliente": cli.razao_social if cli else "",
                         "CNPJ": cli.cnpj if cli else "",
                         "Obra": obra.nome if obra else "",
