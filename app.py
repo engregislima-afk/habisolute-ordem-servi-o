@@ -1,0 +1,968 @@
+
+import os
+import io
+import re
+import smtplib
+from email.message import EmailMessage
+from datetime import date, datetime
+from decimal import Decimal
+
+import pandas as pd
+import requests
+import streamlit as st
+from sqlalchemy import (
+    create_engine, Column, Integer, String, Numeric, Date, DateTime,
+    ForeignKey, Text, Boolean
+)
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
+# =========================
+# CONFIGURAÇÃO
+# =========================
+st.set_page_config(
+    page_title="Habisolute OS",
+    page_icon="🧪",
+    layout="wide"
+)
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///habisolute_os.db")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args=connect_args)
+SessionLocal = sessionmaker(bind=engine)
+Base = declarative_base()
+
+
+# =========================
+# MODELOS
+# =========================
+class Cliente(Base):
+    __tablename__ = "clientes"
+    id = Column(Integer, primary_key=True)
+    cnpj = Column(String(18), unique=True, nullable=False)
+    razao_social = Column(String(200), nullable=False)
+    nome_fantasia = Column(String(200))
+    inscricao_estadual = Column(String(50))
+    telefone = Column(String(50))
+    email = Column(String(200))
+    responsavel = Column(String(200))
+    cep = Column(String(20))
+    logradouro = Column(String(200))
+    numero = Column(String(30))
+    complemento = Column(String(100))
+    bairro = Column(String(100))
+    cidade = Column(String(100))
+    uf = Column(String(2))
+    ativo = Column(Boolean, default=True)
+    criado_em = Column(DateTime, default=datetime.now)
+
+    obras = relationship("Obra", back_populates="cliente")
+
+
+class Obra(Base):
+    __tablename__ = "obras"
+    id = Column(Integer, primary_key=True)
+    cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=False)
+    nome = Column(String(200), nullable=False)
+    codigo = Column(String(60))
+    cep = Column(String(20))
+    logradouro = Column(String(200))
+    numero = Column(String(30))
+    complemento = Column(String(100))
+    bairro = Column(String(100))
+    cidade = Column(String(100))
+    uf = Column(String(2))
+    responsavel = Column(String(200))
+    telefone = Column(String(50))
+    email = Column(String(200))
+    data_inicio = Column(Date)
+    status = Column(String(30), default="Ativa")
+    observacoes = Column(Text)
+
+    cliente = relationship("Cliente", back_populates="obras")
+
+
+class Servico(Base):
+    __tablename__ = "servicos"
+    id = Column(Integer, primary_key=True)
+    codigo = Column(String(50), unique=True, nullable=False)
+    categoria = Column(String(100), nullable=False)
+    descricao = Column(String(250), nullable=False)
+    unidade = Column(String(30), nullable=False)
+    valor_padrao = Column(Numeric(12, 2), default=0)
+    ativo = Column(Boolean, default=True)
+
+
+class PrecoCliente(Base):
+    __tablename__ = "precos_clientes"
+    id = Column(Integer, primary_key=True)
+    cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=False)
+    obra_id = Column(Integer, ForeignKey("obras.id"), nullable=True)
+    servico_id = Column(Integer, ForeignKey("servicos.id"), nullable=False)
+    valor = Column(Numeric(12, 2), nullable=False)
+    vigencia_inicio = Column(Date)
+    vigencia_fim = Column(Date)
+
+
+class OrdemServico(Base):
+    __tablename__ = "ordens_servico"
+    id = Column(Integer, primary_key=True)
+    numero = Column(String(30), unique=True, nullable=False)
+    data = Column(Date, default=date.today)
+    cliente_id = Column(Integer, ForeignKey("clientes.id"), nullable=False)
+    obra_id = Column(Integer, ForeignKey("obras.id"), nullable=False)
+    solicitante = Column(String(200))
+    responsavel_habisolute = Column(String(200))
+    solicitacao_cliente = Column(String(100))
+    pedido_compra = Column(String(100))
+    centro_custo = Column(String(100))
+    observacoes = Column(Text)
+    status = Column(String(30), default="Aberta")
+    criado_em = Column(DateTime, default=datetime.now)
+
+
+class ItemOS(Base):
+    __tablename__ = "itens_os"
+    id = Column(Integer, primary_key=True)
+    os_id = Column(Integer, ForeignKey("ordens_servico.id"), nullable=False)
+    servico_id = Column(Integer, ForeignKey("servicos.id"), nullable=False)
+    quantidade = Column(Numeric(12, 2), nullable=False)
+    valor_unitario = Column(Numeric(12, 2), nullable=False)
+    descricao_customizada = Column(String(250))
+
+
+class HistoricoEnvio(Base):
+    __tablename__ = "historico_envios"
+    id = Column(Integer, primary_key=True)
+    os_id = Column(Integer, ForeignKey("ordens_servico.id"), nullable=False)
+    enviado_em = Column(DateTime, default=datetime.now)
+    destinatario = Column(String(250), nullable=False)
+    assunto = Column(String(300))
+    status = Column(String(50), default="Enviado")
+    mensagem_erro = Column(Text)
+
+
+Base.metadata.create_all(bind=engine)
+
+
+# =========================
+# HELPERS
+# =========================
+def db():
+    return SessionLocal()
+
+def moeda(v):
+    try:
+        return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "R$ 0,00"
+
+def limpar_cnpj(cnpj):
+    return re.sub(r"\D", "", cnpj or "")
+
+def formatar_cnpj(cnpj):
+    n = limpar_cnpj(cnpj)
+    if len(n) == 14:
+        return f"{n[:2]}.{n[2:5]}.{n[5:8]}/{n[8:12]}-{n[12:]}"
+    return cnpj
+
+@st.cache_data(ttl=3600)
+def consultar_cnpj(cnpj):
+    n = limpar_cnpj(cnpj)
+    if len(n) != 14:
+        return None, "CNPJ deve ter 14 dígitos."
+    url = f"https://brasilapi.com.br/api/cnpj/v1/{n}"
+    try:
+        r = requests.get(url, timeout=12)
+        if r.status_code != 200:
+            return None, f"Consulta não retornou dados ({r.status_code})."
+        d = r.json()
+        return {
+            "cnpj": formatar_cnpj(n),
+            "razao_social": d.get("razao_social", ""),
+            "nome_fantasia": d.get("nome_fantasia", ""),
+            "cep": str(d.get("cep", "") or ""),
+            "logradouro": d.get("logradouro", ""),
+            "numero": d.get("numero", ""),
+            "complemento": d.get("complemento", ""),
+            "bairro": d.get("bairro", ""),
+            "cidade": d.get("municipio", ""),
+            "uf": d.get("uf", ""),
+            "telefone": d.get("ddd_telefone_1", "") or "",
+            "email": d.get("email", "") or "",
+        }, None
+    except Exception as e:
+        return None, f"Falha na consulta: {e}"
+
+def proximo_numero_os(s):
+    ano = date.today().year
+    prefixo = f"{ano}-"
+    ult = (
+        s.query(OrdemServico)
+        .filter(OrdemServico.numero.like(f"{prefixo}%"))
+        .order_by(OrdemServico.id.desc())
+        .first()
+    )
+    seq = 1
+    if ult:
+        try:
+            seq = int(ult.numero.split("-")[-1]) + 1
+        except:
+            seq = ult.id + 1
+    return f"{ano}-{seq:06d}"
+
+def obter_preco(s, cliente_id, obra_id, servico_id, data_ref=None):
+    data_ref = data_ref or date.today()
+    q = (
+        s.query(PrecoCliente)
+        .filter(
+            PrecoCliente.cliente_id == cliente_id,
+            PrecoCliente.servico_id == servico_id,
+        )
+    )
+
+    especifico = (
+        q.filter(PrecoCliente.obra_id == obra_id)
+        .order_by(PrecoCliente.id.desc())
+        .all()
+    )
+    geral = (
+        q.filter(PrecoCliente.obra_id.is_(None))
+        .order_by(PrecoCliente.id.desc())
+        .all()
+    )
+    for item in especifico + geral:
+        ini_ok = item.vigencia_inicio is None or item.vigencia_inicio <= data_ref
+        fim_ok = item.vigencia_fim is None or item.vigencia_fim >= data_ref
+        if ini_ok and fim_ok:
+            return float(item.valor)
+
+    srv = s.query(Servico).get(servico_id)
+    return float(srv.valor_padrao or 0) if srv else 0.0
+
+def gerar_pdf_os(s, os_id):
+    osrv = s.query(OrdemServico).get(os_id)
+    cliente = s.query(Cliente).get(osrv.cliente_id)
+    obra = s.query(Obra).get(osrv.obra_id)
+    itens = s.query(ItemOS).filter(ItemOS.os_id == os_id).all()
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        rightMargin=15*mm, leftMargin=15*mm,
+        topMargin=15*mm, bottomMargin=15*mm
+    )
+    styles = getSampleStyleSheet()
+    story = []
+    story.append(Paragraph("<b>HABISOLUTE ENGENHARIA E CONTROLE TECNOLÓGICO</b>", styles["Title"]))
+    story.append(Spacer(1, 5*mm))
+    story.append(Paragraph(f"<b>ORDEM DE SERVIÇO Nº {osrv.numero}</b>", styles["Heading2"]))
+    story.append(Spacer(1, 3*mm))
+    endereco = ", ".join([x for x in [obra.logradouro, obra.numero, obra.bairro, obra.cidade, obra.uf] if x])
+    dados = [
+        ["Data", osrv.data.strftime("%d/%m/%Y")],
+        ["Cliente", cliente.razao_social],
+        ["CNPJ", cliente.cnpj],
+        ["Obra", obra.nome],
+        ["Endereço", endereco],
+        ["Solicitante", osrv.solicitante or ""],
+        ["Responsável Habisolute", osrv.responsavel_habisolute or ""],
+        ["Pedido de compra", osrv.pedido_compra or ""],
+        ["Centro de custo", osrv.centro_custo or ""],
+        ["Status", osrv.status],
+    ]
+    t = Table(dados, colWidths=[45*mm, 125*mm])
+    t.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+        ("BACKGROUND", (0,0), (0,-1), colors.lightgrey),
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
+        ("FONTNAME", (0,0), (0,-1), "Helvetica-Bold"),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 5*mm))
+
+    linhas = [["Código", "Serviço", "Qtd.", "Un.", "Unitário", "Total"]]
+    total = 0
+    for item in itens:
+        srv = s.query(Servico).get(item.servico_id)
+        subt = float(item.quantidade) * float(item.valor_unitario)
+        total += subt
+        linhas.append([
+            srv.codigo if srv else "",
+            item.descricao_customizada or (srv.descricao if srv else ""),
+            f"{float(item.quantidade):.2f}".replace(".", ","),
+            srv.unidade if srv else "",
+            moeda(item.valor_unitario),
+            moeda(subt),
+        ])
+    linhas.append(["", "", "", "", "TOTAL", moeda(total)])
+    ti = Table(linhas, colWidths=[22*mm, 68*mm, 18*mm, 17*mm, 25*mm, 28*mm])
+    ti.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("FONTNAME", (4,-1), (5,-1), "Helvetica-Bold"),
+        ("ALIGN", (2,1), (-1,-1), "RIGHT"),
+        ("VALIGN", (0,0), (-1,-1), "TOP"),
+    ]))
+    story.append(ti)
+
+    if osrv.observacoes:
+        story.append(Spacer(1, 5*mm))
+        story.append(Paragraph(f"<b>Observações:</b> {osrv.observacoes}", styles["BodyText"]))
+
+    story.append(Spacer(1, 15*mm))
+    ass = Table([
+        ["____________________________________", "____________________________________"],
+        ["Responsável Habisolute", "Cliente / Solicitante"],
+    ], colWidths=[85*mm, 85*mm])
+    ass.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER")]))
+    story.append(ass)
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+def dataframe_excel_bytes(df, sheet_name="Dados"):
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+    out.seek(0)
+    return out.getvalue()
+
+
+def enviar_email_os(destinatario, assunto, corpo, pdf_bytes, numero_os):
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", smtp_user)
+    smtp_use_tls = os.getenv("SMTP_USE_TLS", "true").lower() == "true"
+
+    if not all([smtp_host, smtp_user, smtp_password, smtp_from]):
+        raise RuntimeError(
+            "Configuração SMTP incompleta. Defina SMTP_HOST, SMTP_PORT, SMTP_USER, "
+            "SMTP_PASSWORD e opcionalmente SMTP_FROM."
+        )
+
+    msg = EmailMessage()
+    msg["From"] = smtp_from
+    msg["To"] = destinatario
+    msg["Subject"] = assunto
+    msg.set_content(corpo)
+
+    msg.add_attachment(
+        pdf_bytes,
+        maintype="application",
+        subtype="pdf",
+        filename=f"OS_{numero_os}.pdf"
+    )
+
+    context = ssl.create_default_context()
+
+    if smtp_port == 465:
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, context=context, timeout=20) as server:
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+    else:
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+            server.ehlo()
+            if smtp_use_tls:
+                server.starttls(context=context)
+                server.ehlo()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+
+
+def get_email_config():
+    def cfg(name, default=None):
+        try:
+            return st.secrets.get(name, os.getenv(name, default))
+        except Exception:
+            return os.getenv(name, default)
+
+    return {
+        "host": cfg("SMTP_HOST", "smtp.gmail.com"),
+        "port": int(cfg("SMTP_PORT", "587")),
+        "user": cfg("SMTP_USER", ""),
+        "password": cfg("SMTP_PASSWORD", ""),
+        "from_email": cfg("SMTP_FROM", cfg("SMTP_USER", "")),
+        "from_name": cfg("SMTP_FROM_NAME", "Habisolute Engenharia e Controle Tecnológico"),
+    }
+
+def enviar_os_email(destinatario, assunto, mensagem, pdf_bytes, numero_os):
+    config = get_email_config()
+    if not config["user"] or not config["password"]:
+        raise RuntimeError("E-mail do sistema ainda não configurado. Defina SMTP_USER e SMTP_PASSWORD nos Secrets do Streamlit.")
+
+    msg = EmailMessage()
+    msg["Subject"] = assunto
+    msg["From"] = f'{config["from_name"]} <{config["from_email"]}>'
+    msg["To"] = destinatario
+    msg.set_content(mensagem)
+    msg.add_attachment(
+        pdf_bytes,
+        maintype="application",
+        subtype="pdf",
+        filename=f"OS_{numero_os}.pdf"
+    )
+
+    with smtplib.SMTP(config["host"], config["port"], timeout=20) as server:
+        server.starttls()
+        server.login(config["user"], config["password"])
+        server.send_message(msg)
+
+def seed_servicos():
+    s = db()
+    try:
+        if s.query(Servico).count() == 0:
+            padrao = [
+                ("CON-001", "Concreto", "Moldagem de corpo de prova", "un", 0),
+                ("CON-002", "Concreto", "Ruptura de corpo de prova", "un", 0),
+                ("CON-003", "Concreto", "Ensaio de abatimento (Slump Test)", "ensaio", 0),
+                ("CON-004", "Concreto", "Módulo de elasticidade", "ensaio", 0),
+                ("SOL-001", "Solos", "Ensaio de compactação", "ensaio", 0),
+                ("SOL-002", "Solos", "CBR", "ensaio", 0),
+                ("SOL-003", "Solos", "Granulometria", "ensaio", 0),
+                ("SOL-004", "Solos", "Limite de liquidez", "ensaio", 0),
+                ("ALV-001", "Alvenaria", "Ruptura de bloco", "un", 0),
+                ("ALV-002", "Alvenaria", "Ruptura de prisma", "un", 0),
+                ("ARG-001", "Argamassa", "Ensaio / ruptura de argamassa", "ensaio", 0),
+                ("MOB-001", "Mobilização", "Mobilização de equipe", "viagem", 0),
+                ("DIA-001", "Equipe", "Diária de laboratorista", "diária", 0),
+                ("KM-001", "Deslocamento", "Quilometragem", "km", 0),
+            ]
+            for c, cat, desc, un, valor in padrao:
+                s.add(Servico(codigo=c, categoria=cat, descricao=desc, unidade=un, valor_padrao=valor))
+            s.commit()
+    finally:
+        s.close()
+
+seed_servicos()
+
+
+# =========================
+# UI
+# =========================
+st.title("🧪 Habisolute • Ordens de Serviço")
+st.caption("Controle tecnológico • OS • preços por cliente • fechamento mensal")
+
+menu = st.sidebar.radio(
+    "Menu",
+    ["Dashboard", "Clientes", "Obras", "Serviços", "Preços por cliente", "Nova OS", "Consultar OS", "Fechamento mensal"]
+)
+
+s = db()
+
+try:
+    if menu == "Dashboard":
+        total_clientes = s.query(Cliente).count()
+        total_obras = s.query(Obra).count()
+        total_os = s.query(OrdemServico).count()
+
+        hoje = date.today()
+        oss_mes = s.query(OrdemServico).filter(
+            OrdemServico.data >= hoje.replace(day=1)
+        ).all()
+
+        valor_mes = 0
+        for o in oss_mes:
+            itens = s.query(ItemOS).filter(ItemOS.os_id == o.id).all()
+            valor_mes += sum(float(i.quantidade) * float(i.valor_unitario) for i in itens)
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Clientes", total_clientes)
+        c2.metric("Obras", total_obras)
+        c3.metric("OS cadastradas", total_os)
+        c4.metric("Executado no mês", moeda(valor_mes))
+
+        st.subheader("Últimas ordens de serviço")
+        ultimas = s.query(OrdemServico).order_by(OrdemServico.id.desc()).limit(20).all()
+        rows = []
+        for o in ultimas:
+            cli = s.query(Cliente).get(o.cliente_id)
+            obra = s.query(Obra).get(o.obra_id)
+            itens = s.query(ItemOS).filter(ItemOS.os_id == o.id).all()
+            total = sum(float(i.quantidade) * float(i.valor_unitario) for i in itens)
+            rows.append({
+                "OS": o.numero, "Data": o.data, "Cliente": cli.razao_social if cli else "",
+                "Obra": obra.nome if obra else "", "Status": o.status, "Total": total
+            })
+        if rows:
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info("Ainda não há ordens de serviço cadastradas.")
+
+    elif menu == "Clientes":
+        st.subheader("Cadastro de clientes")
+
+        cnpj_input = st.text_input("CNPJ")
+        if st.button("🔎 Buscar CNPJ"):
+            dados, erro = consultar_cnpj(cnpj_input)
+            if erro:
+                st.error(erro)
+            else:
+                st.session_state["cnpj_dados"] = dados
+                st.success("Dados encontrados.")
+
+        dados = st.session_state.get("cnpj_dados", {})
+        with st.form("form_cliente"):
+            c1, c2 = st.columns(2)
+            cnpj = c1.text_input("CNPJ *", value=dados.get("cnpj", formatar_cnpj(cnpj_input)))
+            razao = c2.text_input("Razão Social *", value=dados.get("razao_social", ""))
+            c3, c4 = st.columns(2)
+            fantasia = c3.text_input("Nome Fantasia", value=dados.get("nome_fantasia", ""))
+            ie = c4.text_input("Inscrição Estadual")
+            c5, c6, c7 = st.columns([1,2,1])
+            cep = c5.text_input("CEP", value=dados.get("cep", ""))
+            logradouro = c6.text_input("Logradouro", value=dados.get("logradouro", ""))
+            numero = c7.text_input("Número", value=dados.get("numero", ""))
+            c8, c9, c10 = st.columns([2,2,1])
+            bairro = c8.text_input("Bairro", value=dados.get("bairro", ""))
+            cidade = c9.text_input("Cidade", value=dados.get("cidade", ""))
+            uf = c10.text_input("UF", value=dados.get("uf", ""))
+            complemento = st.text_input("Complemento", value=dados.get("complemento", ""))
+            c11, c12, c13 = st.columns(3)
+            telefone = c11.text_input("Telefone", value=dados.get("telefone", ""))
+            email = c12.text_input("E-mail", value=dados.get("email", ""))
+            responsavel = c13.text_input("Responsável")
+            salvar = st.form_submit_button("💾 Salvar cliente")
+
+            if salvar:
+                if not limpar_cnpj(cnpj) or not razao.strip():
+                    st.error("CNPJ e Razão Social são obrigatórios.")
+                elif s.query(Cliente).filter(Cliente.cnpj == formatar_cnpj(cnpj)).first():
+                    st.error("Esse CNPJ já está cadastrado.")
+                else:
+                    s.add(Cliente(
+                        cnpj=formatar_cnpj(cnpj), razao_social=razao.strip(),
+                        nome_fantasia=fantasia, inscricao_estadual=ie,
+                        telefone=telefone, email=email, responsavel=responsavel,
+                        cep=cep, logradouro=logradouro, numero=numero,
+                        complemento=complemento, bairro=bairro, cidade=cidade, uf=uf
+                    ))
+                    s.commit()
+                    st.session_state.pop("cnpj_dados", None)
+                    st.success("Cliente cadastrado com sucesso.")
+                    st.rerun()
+
+        st.divider()
+        st.subheader("Clientes cadastrados")
+        clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
+        if clientes:
+            st.dataframe(pd.DataFrame([{
+                "ID": c.id, "CNPJ": c.cnpj, "Razão Social": c.razao_social,
+                "Fantasia": c.nome_fantasia, "Cidade": c.cidade, "UF": c.uf,
+                "Telefone": c.telefone, "E-mail": c.email
+            } for c in clientes]), use_container_width=True, hide_index=True)
+
+    elif menu == "Obras":
+        st.subheader("Cadastro de obras")
+        clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
+        if not clientes:
+            st.warning("Cadastre primeiro um cliente.")
+        else:
+            mapa_cli = {f"{c.razao_social} • {c.cnpj}": c.id for c in clientes}
+            with st.form("form_obra"):
+                cliente_label = st.selectbox("Cliente *", list(mapa_cli.keys()))
+                nome = st.text_input("Nome da obra *")
+                codigo = st.text_input("Código da obra")
+                c1, c2, c3 = st.columns([1,2,1])
+                cep = c1.text_input("CEP")
+                logradouro = c2.text_input("Logradouro")
+                numero = c3.text_input("Número")
+                c4, c5, c6 = st.columns([2,2,1])
+                bairro = c4.text_input("Bairro")
+                cidade = c5.text_input("Cidade")
+                uf = c6.text_input("UF")
+                complemento = st.text_input("Complemento")
+                c7, c8, c9 = st.columns(3)
+                responsavel = c7.text_input("Responsável da obra")
+                telefone = c8.text_input("Telefone")
+                email = c9.text_input("E-mail")
+                c10, c11 = st.columns(2)
+                data_inicio = c10.date_input("Data de início", value=None)
+                status = c11.selectbox("Status", ["Ativa", "Suspensa", "Finalizada"])
+                obs = st.text_area("Observações")
+                salvar = st.form_submit_button("💾 Salvar obra")
+                if salvar:
+                    if not nome.strip():
+                        st.error("Informe o nome da obra.")
+                    else:
+                        s.add(Obra(
+                            cliente_id=mapa_cli[cliente_label], nome=nome.strip(), codigo=codigo,
+                            cep=cep, logradouro=logradouro, numero=numero, complemento=complemento,
+                            bairro=bairro, cidade=cidade, uf=uf, responsavel=responsavel,
+                            telefone=telefone, email=email, data_inicio=data_inicio,
+                            status=status, observacoes=obs
+                        ))
+                        s.commit()
+                        st.success("Obra cadastrada.")
+                        st.rerun()
+
+        st.divider()
+        obras = s.query(Obra).order_by(Obra.id.desc()).all()
+        if obras:
+            linhas = []
+            for o in obras:
+                cli = s.query(Cliente).get(o.cliente_id)
+                linhas.append({
+                    "ID": o.id, "Cliente": cli.razao_social if cli else "",
+                    "Obra": o.nome, "Código": o.codigo, "Cidade": o.cidade,
+                    "UF": o.uf, "Status": o.status
+                })
+            st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
+
+    elif menu == "Serviços":
+        st.subheader("Catálogo de serviços")
+        with st.form("form_servico"):
+            c1, c2 = st.columns(2)
+            codigo = c1.text_input("Código *")
+            categoria = c2.selectbox("Categoria", [
+                "Concreto", "Solos", "Alvenaria", "Argamassa",
+                "Mobilização", "Equipe", "Deslocamento", "Outros"
+            ])
+            descricao = st.text_input("Descrição do serviço *")
+            c3, c4 = st.columns(2)
+            unidade = c3.text_input("Unidade *", placeholder="un, ensaio, diária, km...")
+            valor_padrao = c4.number_input("Valor padrão", min_value=0.0, step=1.0, format="%.2f")
+            salvar = st.form_submit_button("💾 Salvar serviço")
+            if salvar:
+                if not codigo or not descricao or not unidade:
+                    st.error("Código, descrição e unidade são obrigatórios.")
+                elif s.query(Servico).filter(Servico.codigo == codigo).first():
+                    st.error("Código já cadastrado.")
+                else:
+                    s.add(Servico(
+                        codigo=codigo.strip(), categoria=categoria,
+                        descricao=descricao.strip(), unidade=unidade.strip(),
+                        valor_padrao=valor_padrao
+                    ))
+                    s.commit()
+                    st.success("Serviço cadastrado.")
+                    st.rerun()
+
+        servicos = s.query(Servico).order_by(Servico.categoria, Servico.descricao).all()
+        if servicos:
+            st.dataframe(pd.DataFrame([{
+                "ID": x.id, "Código": x.codigo, "Categoria": x.categoria,
+                "Serviço": x.descricao, "Unidade": x.unidade,
+                "Valor padrão": float(x.valor_padrao or 0)
+            } for x in servicos]), use_container_width=True, hide_index=True)
+
+    elif menu == "Preços por cliente":
+        st.subheader("Tabela de preços por cliente / obra")
+        clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
+        servicos = s.query(Servico).filter(Servico.ativo == True).order_by(Servico.descricao).all()
+        if not clientes or not servicos:
+            st.warning("Cadastre clientes e serviços antes.")
+        else:
+            mapa_cli = {f"{c.razao_social} • {c.cnpj}": c.id for c in clientes}
+            cli_label = st.selectbox("Cliente", list(mapa_cli.keys()))
+            cliente_id = mapa_cli[cli_label]
+            obras = s.query(Obra).filter(Obra.cliente_id == cliente_id).order_by(Obra.nome).all()
+            mapa_obra = {"Todas as obras (preço geral)": None}
+            mapa_obra.update({o.nome: o.id for o in obras})
+            obra_label = st.selectbox("Obra", list(mapa_obra.keys()))
+            obra_id = mapa_obra[obra_label]
+
+            with st.form("form_preco"):
+                mapa_srv = {f"{x.codigo} • {x.descricao} ({x.unidade})": x.id for x in servicos}
+                srv_label = st.selectbox("Serviço", list(mapa_srv.keys()))
+                valor = st.number_input("Valor", min_value=0.0, step=1.0, format="%.2f")
+                c1, c2 = st.columns(2)
+                inicio = c1.date_input("Vigência inicial", value=date.today())
+                usar_fim = c2.checkbox("Definir data final")
+                fim = st.date_input("Vigência final", value=date.today()) if usar_fim else None
+                salvar = st.form_submit_button("💾 Salvar preço")
+                if salvar:
+                    s.add(PrecoCliente(
+                        cliente_id=cliente_id, obra_id=obra_id,
+                        servico_id=mapa_srv[srv_label], valor=valor,
+                        vigencia_inicio=inicio, vigencia_fim=fim
+                    ))
+                    s.commit()
+                    st.success("Preço cadastrado.")
+                    st.rerun()
+
+            precos = s.query(PrecoCliente).filter(PrecoCliente.cliente_id == cliente_id).order_by(PrecoCliente.id.desc()).all()
+            rows = []
+            for p in precos:
+                srv = s.query(Servico).get(p.servico_id)
+                obra = s.query(Obra).get(p.obra_id) if p.obra_id else None
+                rows.append({
+                    "Obra": obra.nome if obra else "Todas",
+                    "Código": srv.codigo if srv else "",
+                    "Serviço": srv.descricao if srv else "",
+                    "Valor": float(p.valor),
+                    "Início": p.vigencia_inicio,
+                    "Fim": p.vigencia_fim,
+                })
+            if rows:
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    elif menu == "Nova OS":
+        st.subheader("Nova Ordem de Serviço")
+        clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
+        if not clientes:
+            st.warning("Cadastre um cliente primeiro.")
+        else:
+            if "itens_os_temp" not in st.session_state:
+                st.session_state.itens_os_temp = []
+
+            numero_os = proximo_numero_os(s)
+            st.info(f"Próximo número: **{numero_os}**")
+
+            mapa_cli = {f"{c.razao_social} • {c.cnpj}": c.id for c in clientes}
+            cli_label = st.selectbox("Cliente *", list(mapa_cli.keys()), key="os_cliente")
+            cliente_id = mapa_cli[cli_label]
+
+            obras = s.query(Obra).filter(Obra.cliente_id == cliente_id, Obra.status != "Finalizada").order_by(Obra.nome).all()
+            if not obras:
+                st.warning("Esse cliente não possui obra ativa cadastrada.")
+            else:
+                mapa_obra = {o.nome: o.id for o in obras}
+                obra_label = st.selectbox("Obra *", list(mapa_obra.keys()))
+                obra_id = mapa_obra[obra_label]
+
+                c1, c2, c3 = st.columns(3)
+                data_os = c1.date_input("Data da OS", value=date.today())
+                solicitante = c2.text_input("Solicitante")
+                responsavel = c3.text_input("Responsável Habisolute")
+                c4, c5, c6 = st.columns(3)
+                sol_cli = c4.text_input("Solicitação do cliente")
+                pedido = c5.text_input("Pedido de compra")
+                ccusto = c6.text_input("Centro de custo")
+                observacoes = st.text_area("Observações")
+
+                st.markdown("#### Adicionar serviços")
+                servicos = s.query(Servico).filter(Servico.ativo == True).order_by(Servico.categoria, Servico.descricao).all()
+                mapa_srv = {f"{x.codigo} • {x.descricao} ({x.unidade})": x.id for x in servicos}
+                srv_label = st.selectbox("Serviço", list(mapa_srv.keys()), key="srv_add")
+                srv_id = mapa_srv[srv_label]
+                preco_sugerido = obter_preco(s, cliente_id, obra_id, srv_id, data_os)
+
+                a1, a2, a3 = st.columns(3)
+                qtd = a1.number_input("Quantidade", min_value=0.01, value=1.0, step=1.0)
+                valor_unit = a2.number_input("Valor unitário", min_value=0.0, value=float(preco_sugerido), step=1.0, format="%.2f")
+                desc_custom = a3.text_input("Descrição personalizada", placeholder="Opcional")
+
+                if st.button("➕ Adicionar item"):
+                    srv = s.query(Servico).get(srv_id)
+                    st.session_state.itens_os_temp.append({
+                        "servico_id": srv_id,
+                        "codigo": srv.codigo,
+                        "descricao": desc_custom or srv.descricao,
+                        "unidade": srv.unidade,
+                        "quantidade": float(qtd),
+                        "valor_unitario": float(valor_unit),
+                    })
+                    st.rerun()
+
+                if st.session_state.itens_os_temp:
+                    df_itens = pd.DataFrame(st.session_state.itens_os_temp)
+                    df_show = df_itens.copy()
+                    df_show["total"] = df_show["quantidade"] * df_show["valor_unitario"]
+                    st.dataframe(df_show[["codigo","descricao","unidade","quantidade","valor_unitario","total"]],
+                                 use_container_width=True, hide_index=True)
+                    total_os = float(df_show["total"].sum())
+                    st.metric("Total da OS", moeda(total_os))
+
+                    cbtn1, cbtn2 = st.columns(2)
+                    if cbtn1.button("🗑️ Limpar itens"):
+                        st.session_state.itens_os_temp = []
+                        st.rerun()
+
+                    if cbtn2.button("💾 Salvar OS", type="primary"):
+                        nova = OrdemServico(
+                            numero=numero_os, data=data_os, cliente_id=cliente_id, obra_id=obra_id,
+                            solicitante=solicitante, responsavel_habisolute=responsavel,
+                            solicitacao_cliente=sol_cli, pedido_compra=pedido,
+                            centro_custo=ccusto, observacoes=observacoes, status="Executada"
+                        )
+                        s.add(nova)
+                        s.flush()
+                        for item in st.session_state.itens_os_temp:
+                            s.add(ItemOS(
+                                os_id=nova.id, servico_id=item["servico_id"],
+                                quantidade=item["quantidade"],
+                                valor_unitario=item["valor_unitario"],
+                                descricao_customizada=item["descricao"]
+                            ))
+                        s.commit()
+                        st.session_state.itens_os_temp = []
+                        st.success(f"OS {numero_os} salva com sucesso.")
+                        st.rerun()
+                else:
+                    st.info("Adicione pelo menos um serviço à OS.")
+
+    elif menu == "Consultar OS":
+        st.subheader("Consultar Ordens de Serviço")
+        termo = st.text_input("Pesquisar por número, cliente ou obra")
+        q = s.query(OrdemServico).order_by(OrdemServico.id.desc())
+        ordens = q.limit(200).all()
+
+        cards = []
+        for o in ordens:
+            cli = s.query(Cliente).get(o.cliente_id)
+            obra = s.query(Obra).get(o.obra_id)
+            texto = f"{o.numero} {cli.razao_social if cli else ''} {obra.nome if obra else ''}".lower()
+            if termo and termo.lower() not in texto:
+                continue
+            itens = s.query(ItemOS).filter(ItemOS.os_id == o.id).all()
+            total = sum(float(i.quantidade) * float(i.valor_unitario) for i in itens)
+            cards.append((o, cli, obra, total))
+
+        for o, cli, obra, total in cards:
+            with st.expander(f"OS {o.numero} • {o.data.strftime('%d/%m/%Y')} • {obra.nome if obra else ''} • {moeda(total)}"):
+                st.write(f"**Cliente:** {cli.razao_social if cli else ''}")
+                st.write(f"**CNPJ:** {cli.cnpj if cli else ''}")
+                st.write(f"**Obra:** {obra.nome if obra else ''}")
+                st.write(f"**Status:** {o.status}")
+                itens = s.query(ItemOS).filter(ItemOS.os_id == o.id).all()
+                rows = []
+                for i in itens:
+                    srv = s.query(Servico).get(i.servico_id)
+                    rows.append({
+                        "Código": srv.codigo if srv else "",
+                        "Serviço": i.descricao_customizada or (srv.descricao if srv else ""),
+                        "Qtd.": float(i.quantidade),
+                        "Unidade": srv.unidade if srv else "",
+                        "Valor unit.": float(i.valor_unitario),
+                        "Total": float(i.quantidade) * float(i.valor_unitario)
+                    })
+                df = pd.DataFrame(rows)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+                pdf = gerar_pdf_os(s, o.id)
+                excel = dataframe_excel_bytes(df, f"OS {o.numero}")
+                b1, b2, b3 = st.columns(3)
+                b1.download_button(
+                    "📄 Baixar / Imprimir OS", pdf,
+                    file_name=f"OS_{o.numero}.pdf", mime="application/pdf",
+                    key=f"pdf_{o.id}"
+                )
+                b2.download_button(
+                    "📊 Exportar OS em Excel", excel,
+                    file_name=f"OS_{o.numero}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key=f"xls_{o.id}"
+                )
+                if b3.button("✉️ Enviar OS por e-mail", key=f"abrir_email_{o.id}"):
+                    st.session_state[f"email_os_{o.id}"] = True
+
+                if st.session_state.get(f"email_os_{o.id}", False):
+                    st.markdown("##### Enviar OS ao cliente")
+                    email_padrao = (obra.email if obra and obra.email else "") or (cli.email if cli else "") or ""
+                    destinatario = st.text_input(
+                        "E-mail do destinatário",
+                        value=email_padrao,
+                        key=f"dest_{o.id}"
+                    )
+                    assunto = st.text_input(
+                        "Assunto",
+                        value=f"Ordem de Serviço {o.numero} - Habisolute",
+                        key=f"assunto_{o.id}"
+                    )
+                    mensagem = st.text_area(
+                        "Mensagem",
+                        value=(
+                            f"Olá,\n\nSegue em anexo a Ordem de Serviço nº {o.numero}, "
+                            f"referente à obra {obra.nome if obra else ''}.\n\n"
+                            "Atenciosamente,\nHabisolute Engenharia e Controle Tecnológico"
+                        ),
+                        height=150,
+                        key=f"msg_{o.id}"
+                    )
+                    ec1, ec2 = st.columns(2)
+                    if ec1.button("📨 Confirmar envio", type="primary", key=f"enviar_{o.id}"):
+                        if not destinatario or "@" not in destinatario:
+                            st.error("Informe um e-mail válido.")
+                        else:
+                            try:
+                                enviar_os_email(destinatario, assunto, mensagem, pdf, o.numero)
+                                st.success(f"OS {o.numero} enviada para {destinatario}.")
+                                st.session_state[f"email_os_{o.id}"] = False
+                            except Exception as e:
+                                st.error(f"Não foi possível enviar: {e}")
+                    if ec2.button("Cancelar", key=f"cancelar_email_{o.id}"):
+                        st.session_state[f"email_os_{o.id}"] = False
+                        st.rerun()
+
+    elif menu == "Fechamento mensal":
+        st.subheader("Fechamento mensal")
+        clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
+        if not clientes:
+            st.warning("Nenhum cliente cadastrado.")
+        else:
+            mapa_cli = {"Todos os clientes": None}
+            mapa_cli.update({f"{c.razao_social} • {c.cnpj}": c.id for c in clientes})
+            c1, c2, c3 = st.columns(3)
+            cli_label = c1.selectbox("Cliente", list(mapa_cli.keys()))
+            inicio = c2.date_input("Data inicial", value=date.today().replace(day=1))
+            fim = c3.date_input("Data final", value=date.today())
+
+            cliente_id = mapa_cli[cli_label]
+            obras = []
+            if cliente_id:
+                obras = s.query(Obra).filter(Obra.cliente_id == cliente_id).order_by(Obra.nome).all()
+            mapa_obra = {"Todas as obras": None}
+            mapa_obra.update({o.nome: o.id for o in obras})
+            obra_label = st.selectbox("Obra", list(mapa_obra.keys()))
+            obra_id = mapa_obra[obra_label]
+
+            q = s.query(OrdemServico).filter(OrdemServico.data >= inicio, OrdemServico.data <= fim)
+            if cliente_id:
+                q = q.filter(OrdemServico.cliente_id == cliente_id)
+            if obra_id:
+                q = q.filter(OrdemServico.obra_id == obra_id)
+            ordens = q.order_by(OrdemServico.data, OrdemServico.numero).all()
+
+            rows = []
+            for o in ordens:
+                cli = s.query(Cliente).get(o.cliente_id)
+                obra = s.query(Obra).get(o.obra_id)
+                itens = s.query(ItemOS).filter(ItemOS.os_id == o.id).all()
+                for i in itens:
+                    srv = s.query(Servico).get(i.servico_id)
+                    total = float(i.quantidade) * float(i.valor_unitario)
+                    rows.append({
+                        "OS": o.numero,
+                        "Data": o.data,
+                        "Cliente": cli.razao_social if cli else "",
+                        "CNPJ": cli.cnpj if cli else "",
+                        "Obra": obra.nome if obra else "",
+                        "Código": srv.codigo if srv else "",
+                        "Categoria": srv.categoria if srv else "",
+                        "Serviço": i.descricao_customizada or (srv.descricao if srv else ""),
+                        "Quantidade": float(i.quantidade),
+                        "Unidade": srv.unidade if srv else "",
+                        "Valor unitário": float(i.valor_unitario),
+                        "Total": total,
+                        "Status": o.status,
+                    })
+
+            if rows:
+                df = pd.DataFrame(rows)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+                st.metric("TOTAL DO PERÍODO", moeda(df["Total"].sum()))
+                excel = dataframe_excel_bytes(df, "Fechamento")
+                st.download_button(
+                    "📊 Exportar fechamento para Excel",
+                    excel,
+                    file_name=f"Fechamento_{inicio.strftime('%Y%m%d')}_{fim.strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            else:
+                st.info("Nenhuma OS encontrada para o período selecionado.")
+
+finally:
+    s.close()
