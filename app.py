@@ -30,6 +30,321 @@ st.set_page_config(
     layout="wide"
 )
 
+
+def aplicar_tema_profissional():
+    st.markdown("""
+    <style>
+    :root {
+        --hb-bg: #f6f8fb;
+        --hb-card: #ffffff;
+        --hb-border: #e6eaf0;
+        --hb-text: #1f2937;
+        --hb-muted: #6b7280;
+        --hb-primary: #f97316;
+        --hb-primary-dark: #ea580c;
+        --hb-sidebar: #111827;
+        --hb-sidebar-muted: #9ca3af;
+    }
+
+    /* Página */
+    .stApp {
+        background: var(--hb-bg);
+        color: var(--hb-text);
+    }
+
+    /* Remove respiros excessivos */
+    .block-container {
+        max-width: 1500px;
+        padding-top: 1.4rem;
+        padding-bottom: 3rem;
+        padding-left: 2rem;
+        padding-right: 2rem;
+    }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {
+        background: var(--hb-sidebar);
+        border-right: 0;
+        min-width: 250px !important;
+        max-width: 250px !important;
+    }
+
+    section[data-testid="stSidebar"] * {
+        color: #f9fafb;
+    }
+
+    section[data-testid="stSidebar"] .stRadio label {
+        padding: .45rem .6rem;
+        border-radius: 8px;
+        margin-bottom: .12rem;
+    }
+
+    section[data-testid="stSidebar"] .stRadio label:hover {
+        background: rgba(255,255,255,.07);
+    }
+
+    section[data-testid="stSidebar"] [data-baseweb="radio"] {
+        gap: .55rem;
+    }
+
+    /* Cabeçalhos */
+    h1, h2, h3, h4 {
+        color: var(--hb-text);
+        letter-spacing: -0.02em;
+    }
+
+    h1 {
+        font-size: 2rem !important;
+        font-weight: 750 !important;
+        margin-bottom: .2rem !important;
+    }
+
+    h2 {
+        font-size: 1.4rem !important;
+    }
+
+    /* Cards métricos */
+    div[data-testid="stMetric"] {
+        background: var(--hb-card);
+        border: 1px solid var(--hb-border);
+        padding: 1rem 1.1rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 2px rgba(16,24,40,.04);
+    }
+
+    div[data-testid="stMetric"] label {
+        color: var(--hb-muted) !important;
+        font-size: .82rem !important;
+        font-weight: 600 !important;
+    }
+
+    div[data-testid="stMetricValue"] {
+        font-size: 1.65rem !important;
+        color: var(--hb-text);
+    }
+
+    /* Inputs */
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="select"] > div,
+    textarea {
+        border-radius: 8px !important;
+    }
+
+    /* Botões */
+    .stButton > button,
+    .stDownloadButton > button,
+    button[kind="primary"] {
+        border-radius: 8px !important;
+        min-height: 40px;
+        font-weight: 650;
+        border: 1px solid var(--hb-border);
+        box-shadow: none;
+    }
+
+    button[kind="primary"] {
+        background: var(--hb-primary) !important;
+        border-color: var(--hb-primary) !important;
+    }
+
+    button[kind="primary"]:hover {
+        background: var(--hb-primary-dark) !important;
+        border-color: var(--hb-primary-dark) !important;
+    }
+
+    /* Tabelas */
+    div[data-testid="stDataFrame"] {
+        background: var(--hb-card);
+        border: 1px solid var(--hb-border);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    /* Expander */
+    details {
+        background: var(--hb-card);
+        border: 1px solid var(--hb-border) !important;
+        border-radius: 10px !important;
+    }
+
+    /* Alertas */
+    div[data-testid="stAlert"] {
+        border-radius: 10px;
+    }
+
+    /* Separadores */
+    hr {
+        border-color: var(--hb-border);
+    }
+
+    /* Esconde header padrão do Streamlit e reduz ruído visual */
+    header[data-testid="stHeader"] {
+        background: transparent;
+    }
+
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+
+    /* Componentes próprios */
+    .hb-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #fff;
+        border: 1px solid var(--hb-border);
+        border-radius: 12px;
+        padding: .85rem 1rem;
+        margin-bottom: 1.2rem;
+        box-shadow: 0 1px 2px rgba(16,24,40,.03);
+    }
+
+    .hb-brand {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+    }
+
+    .hb-brand-badge {
+        width: 38px;
+        height: 38px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 10px;
+        font-size: 1.25rem;
+    }
+
+    .hb-brand-title {
+        font-size: 1rem;
+        font-weight: 750;
+        color: var(--hb-text);
+        line-height: 1.05;
+    }
+
+    .hb-brand-sub {
+        font-size: .76rem;
+        color: var(--hb-muted);
+        margin-top: .2rem;
+    }
+
+    .hb-chip {
+        display:inline-flex;
+        align-items:center;
+        padding:.32rem .55rem;
+        border-radius:999px;
+        font-size:.75rem;
+        background:#f3f4f6;
+        color:#4b5563;
+        border:1px solid #e5e7eb;
+    }
+
+    .hb-page-head {
+        margin-bottom: 1rem;
+    }
+
+    .hb-page-title {
+        font-size: 1.55rem;
+        font-weight: 760;
+        color: var(--hb-text);
+        margin-bottom: .18rem;
+    }
+
+    .hb-page-sub {
+        color: var(--hb-muted);
+        font-size: .9rem;
+    }
+
+    .hb-section {
+        background: var(--hb-card);
+        border: 1px solid var(--hb-border);
+        border-radius: 12px;
+        padding: 1rem 1.1rem .5rem 1.1rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 2px rgba(16,24,40,.03);
+    }
+
+    .hb-section-title {
+        font-size: .95rem;
+        font-weight: 750;
+        color: var(--hb-text);
+        margin-bottom: .15rem;
+    }
+
+    .hb-section-sub {
+        color: var(--hb-muted);
+        font-size: .78rem;
+        margin-bottom: .75rem;
+    }
+
+    .hb-kpi-label {
+        font-size: .75rem;
+        color: var(--hb-muted);
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        font-weight: 700;
+    }
+
+    .hb-sidebar-logo {
+        padding: .7rem .4rem 1rem .4rem;
+        margin-bottom: .5rem;
+        border-bottom: 1px solid rgba(255,255,255,.09);
+    }
+
+    .hb-sidebar-logo .name {
+        color: white;
+        font-weight: 800;
+        font-size: 1.05rem;
+    }
+
+    .hb-sidebar-logo .sub {
+        color: var(--hb-sidebar-muted);
+        font-size: .72rem;
+        margin-top: .15rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+def topo_sistema():
+    st.markdown("""
+    <div class="hb-topbar">
+        <div class="hb-brand">
+            <div class="hb-brand-badge">🧪</div>
+            <div>
+                <div class="hb-brand-title">Habisolute OS</div>
+                <div class="hb-brand-sub">Controle tecnológico e faturamento</div>
+            </div>
+        </div>
+        <div class="hb-chip">Sistema operacional</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def cabecalho_pagina(titulo, subtitulo):
+    st.markdown(
+        f"""
+        <div class="hb-page-head">
+            <div class="hb-page-title">{titulo}</div>
+            <div class="hb-page-sub">{subtitulo}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+def inicio_secao(titulo, subtitulo=""):
+    st.markdown(
+        f"""
+        <div class="hb-section">
+            <div class="hb-section-title">{titulo}</div>
+            <div class="hb-section-sub">{subtitulo}</div>
+        """,
+        unsafe_allow_html=True
+    )
+
+def fim_secao():
+    st.markdown("</div>", unsafe_allow_html=True)
+
+aplicar_tema_profissional()
+
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///habisolute_os.db")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -451,18 +766,38 @@ seed_servicos()
 # =========================
 # UI
 # =========================
-st.title("🧪 Habisolute • Ordens de Serviço")
-st.caption("Controle tecnológico • OS • preços por cliente • fechamento mensal")
+
+st.sidebar.markdown("""
+<div class="hb-sidebar-logo">
+    <div class="name">HABISOLUTE</div>
+    <div class="sub">Engenharia • Controle Tecnológico</div>
+</div>
+""", unsafe_allow_html=True)
 
 menu = st.sidebar.radio(
-    "Menu",
-    ["Dashboard", "Clientes", "Obras", "Serviços", "Preços por cliente", "Nova OS", "Consultar OS", "Fechamento mensal"]
+    "Navegação",
+    [
+        "Dashboard",
+        "Clientes",
+        "Obras",
+        "Serviços",
+        "Preços por cliente",
+        "Nova OS",
+        "Consultar OS",
+        "Fechamento mensal",
+    ],
+    label_visibility="collapsed",
 )
+
+st.sidebar.markdown("---")
+st.sidebar.caption("Habisolute Engenharia")
+topo_sistema()
 
 s = db()
 
 try:
     if menu == "Dashboard":
+        cabecalho_pagina("Visão geral", "Acompanhe rapidamente clientes, obras, ordens de serviço e valores executados.")
         total_clientes = s.query(Cliente).count()
         total_obras = s.query(Obra).count()
         total_os = s.query(OrdemServico).count()
@@ -478,12 +813,19 @@ try:
             valor_mes += sum(float(i.quantidade) * float(i.valor_unitario) for i in itens)
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Clientes", total_clientes)
-        c2.metric("Obras", total_obras)
-        c3.metric("OS cadastradas", total_os)
+        c1.metric("Clientes ativos", total_clientes)
+        c2.metric("Obras cadastradas", total_obras)
+        c3.metric("Ordens de serviço", total_os)
         c4.metric("Executado no mês", moeda(valor_mes))
 
-        st.subheader("Últimas ordens de serviço")
+        st.markdown("### Atalhos rápidos")
+        a1, a2, a3, a4 = st.columns(4)
+        a1.info("**Clientes**\n\nCadastros e dados fiscais")
+        a2.info("**Nova OS**\n\nLançar serviços executados")
+        a3.info("**Consultar OS**\n\nImprimir, exportar e enviar")
+        a4.info("**Fechamento**\n\nConsolidar período mensal")
+
+        st.markdown("### Últimas ordens de serviço")
         ultimas = s.query(OrdemServico).order_by(OrdemServico.id.desc()).limit(20).all()
         rows = []
         for o in ultimas:
@@ -497,12 +839,19 @@ try:
             })
         if rows:
             df = pd.DataFrame(rows)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(
+                df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Total": st.column_config.NumberColumn("Total", format="R$ %.2f"),
+                }
+            )
         else:
             st.info("Ainda não há ordens de serviço cadastradas.")
 
     elif menu == "Clientes":
-        st.subheader("Cadastro de clientes")
+        cabecalho_pagina("Clientes", "Cadastre e mantenha os dados comerciais e fiscais dos clientes.")
 
         cnpj_input = st.text_input("CNPJ")
         if st.button("🔎 Buscar CNPJ"):
@@ -565,7 +914,7 @@ try:
             } for c in clientes]), use_container_width=True, hide_index=True)
 
     elif menu == "Obras":
-        st.subheader("Cadastro de obras")
+        cabecalho_pagina("Obras", "Organize as obras vinculadas a cada cliente e seus responsáveis.")
         clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
         if not clientes:
             st.warning("Cadastre primeiro um cliente.")
@@ -622,7 +971,7 @@ try:
             st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
 
     elif menu == "Serviços":
-        st.subheader("Catálogo de serviços")
+        cabecalho_pagina("Serviços", "Gerencie o catálogo de ensaios, mobilizações, diárias e demais serviços.")
         with st.form("form_servico"):
             c1, c2 = st.columns(2)
             codigo = c1.text_input("Código *")
@@ -659,7 +1008,7 @@ try:
             } for x in servicos]), use_container_width=True, hide_index=True)
 
     elif menu == "Preços por cliente":
-        st.subheader("Tabela de preços por cliente / obra")
+        cabecalho_pagina("Preços por cliente", "Defina valores comerciais por cliente, obra e período de vigência.")
         clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
         servicos = s.query(Servico).filter(Servico.ativo == True).order_by(Servico.descricao).all()
         if not clientes or not servicos:
@@ -710,7 +1059,7 @@ try:
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     elif menu == "Nova OS":
-        st.subheader("Nova Ordem de Serviço")
+        cabecalho_pagina("Nova Ordem de Serviço", "Registre os serviços executados e gere a OS do cliente.")
         clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
         if not clientes:
             st.warning("Cadastre um cliente primeiro.")
@@ -805,9 +1154,13 @@ try:
                     st.info("Adicione pelo menos um serviço à OS.")
 
     elif menu == "Consultar OS":
-        st.subheader("Consultar Ordens de Serviço")
-        termo = st.text_input("Pesquisar por número, cliente ou obra")
+        cabecalho_pagina("Consultar OS", "Pesquise, visualize, imprima, exporte e envie ordens de serviço.")
+        f1, f2 = st.columns([3, 1])
+        termo = f1.text_input("Pesquisar", placeholder="Número da OS, cliente ou obra...")
+        status_filtro = f2.selectbox("Status", ["Todos", "Aberta", "Executada", "Conferida", "Fechada", "Faturada", "Recebida"])
         q = s.query(OrdemServico).order_by(OrdemServico.id.desc())
+        if status_filtro != "Todos":
+            q = q.filter(OrdemServico.status == status_filtro)
         ordens = q.limit(200).all()
 
         cards = []
@@ -898,7 +1251,7 @@ try:
                         st.rerun()
 
     elif menu == "Fechamento mensal":
-        st.subheader("Fechamento mensal")
+        cabecalho_pagina("Fechamento mensal", "Consolide as OS do período por cliente e obra.")
         clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
         if not clientes:
             st.warning("Nenhum cliente cadastrado.")
