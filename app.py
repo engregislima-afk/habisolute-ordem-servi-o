@@ -1352,6 +1352,33 @@ def gerar_pdf_fechamento(s, ordens, inicio, fim, cliente_id=None, obra_id=None):
     ]))
     story.append(total_box)
 
+    # Assinaturas do fechamento
+    story.append(Spacer(1, 14*mm))
+    story.append(Paragraph("APROVAÇÃO DO FECHAMENTO", styles["section"]))
+    story.append(Spacer(1, 7*mm))
+
+    assinatura_fechamento = Table([
+        ["", ""],
+        ["RESPONSÁVEL HABISOLUTE", "RESPONSÁVEL DO CLIENTE"],
+        ["Nome: ______________________________", "Nome: ______________________________"],
+        ["Data: ____/____/________", "Data: ____/____/________"],
+    ], colWidths=[125*mm, 125*mm], rowHeights=[14*mm, 7*mm, 7*mm, 7*mm])
+
+    assinatura_fechamento.setStyle(TableStyle([
+        ("LINEABOVE", (0,1), (0,1), 0.8, preto),
+        ("LINEABOVE", (1,1), (1,1), 0.8, preto),
+        ("ALIGN", (0,1), (-1,1), "CENTER"),
+        ("FONTNAME", (0,1), (-1,1), "Helvetica-Bold"),
+        ("FONTSIZE", (0,1), (-1,1), 8),
+        ("TEXTCOLOR", (0,1), (-1,1), preto),
+        ("FONTSIZE", (0,2), (-1,-1), 7.5),
+        ("TEXTCOLOR", (0,2), (-1,-1), colors.HexColor("#6B7280")),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING", (0,0), (-1,-1), 8),
+        ("RIGHTPADDING", (0,0), (-1,-1), 8),
+    ]))
+    story.append(assinatura_fechamento)
+
     doc.build(
         story,
         onFirstPage=lambda c, d: _pdf_header_footer(c, d, "FECHAMENTO MENSAL"),
