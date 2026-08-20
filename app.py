@@ -1475,8 +1475,8 @@ try:
                 excel = dataframe_excel_bytes(df, f"OS {o.numero}")
                 b1, b2, b3 = st.columns(3)
                 b1.download_button(
-                    "📄 Baixar / Imprimir OS", pdf,
-                    file_name=f"OS_{o.numero}.pdf", mime="application/pdf",
+                    "🧾 Via Cliente", pdf_cliente,
+                    file_name=f"OS_{o.numero}_CLIENTE.pdf", mime="application/pdf",
                     key=f"pdf_{o.id}"
                 )
                 b2.download_button(
@@ -1517,7 +1517,7 @@ try:
                             st.error("Informe um e-mail válido.")
                         else:
                             try:
-                                enviar_os_email(destinatario, assunto, mensagem, pdf, o.numero)
+                                enviar_os_email(destinatario, assunto, mensagem, pdf_cliente, o.numero)
                                 st.success(f"OS {o.numero} enviada para {destinatario}.")
                                 st.session_state[f"email_os_{o.id}"] = False
                             except Exception as e:
