@@ -1813,7 +1813,13 @@ try:
                 telefone = c8.text_input("Telefone")
                 email = c9.text_input("E-mail")
                 c10, c11 = st.columns(2)
-                data_inicio = c10.date_input("Data de início", value=None)
+                data_inicio = c10.date_input(
+                    "Data de início",
+                    value=None,
+                    min_value=date(2000, 1, 1),
+                    max_value=date(2100, 12, 31),
+                    format="DD/MM/YYYY"
+                )
                 status = c11.selectbox("Status", ["Ativa", "Suspensa", "Finalizada"])
                 obs = st.text_area("Observações")
                 salvar = st.form_submit_button("💾 Salvar obra")
@@ -2107,6 +2113,7 @@ try:
 
     elif menu == "Nova OS":
         cabecalho_pagina("Nova Ordem de Serviço", "Registre os serviços executados e gere a OS do cliente.")
+        st.info("📅 Datas retroativas são permitidas. A data da OS e a data de cada serviço podem ser informadas conforme a execução real.")
         clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
         if not clientes:
             st.warning("Cadastre um cliente primeiro.")
@@ -2132,7 +2139,14 @@ try:
                 esquerda, direita = st.columns([2.2, 1])
                 with esquerda:
                     c1, c2 = st.columns(2)
-                    data_os = c1.date_input("Data da OS", value=date.today())
+                    data_os = c1.date_input(
+                        "Data da OS",
+                        value=date.today(),
+                        min_value=date(2000, 1, 1),
+                        max_value=date(2100, 12, 31),
+                        format="DD/MM/YYYY",
+                        help="Pode ser informada uma data retroativa."
+                    )
                     solicitante = c2.text_input("Solicitante")
                     c3, c4 = st.columns(2)
                     responsavel = c3.text_input("Responsável Habisolute")
@@ -2154,7 +2168,15 @@ try:
                 preco_sugerido = obter_preco(s, cliente_id, obra_id, srv_id, data_os)
 
                 a1, a2, a3, a4 = st.columns(4)
-                data_servico = a1.date_input("Data do serviço", value=data_os, key="data_servico_item")
+                data_servico = a1.date_input(
+                    "Data do serviço",
+                    value=data_os,
+                    min_value=date(2000, 1, 1),
+                    max_value=date(2100, 12, 31),
+                    format="DD/MM/YYYY",
+                    key="data_servico_item",
+                    help="Pode ser diferente da data da OS e também pode ser retroativa."
+                )
                 qtd = a2.number_input("Quantidade", min_value=0.01, value=1.0, step=1.0)
                 valor_unit = a3.number_input("Valor unitário", min_value=0.0, value=float(preco_sugerido), step=1.0, format="%.2f")
                 desc_custom = a4.text_input("Descrição personalizada", placeholder="Opcional")
@@ -2365,7 +2387,11 @@ try:
                     ed_data_os = g1.date_input(
                         "Data da OS",
                         value=o.data,
-                        key=f"edit_data_os_{o.id}"
+                        min_value=date(2000, 1, 1),
+                        max_value=date(2100, 12, 31),
+                        format="DD/MM/YYYY",
+                        key=f"edit_data_os_{o.id}",
+                        help="Você pode alterar para uma data retroativa."
                     )
 
                     status_opts = [
