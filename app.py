@@ -913,6 +913,64 @@ try:
                 "Telefone": c.telefone, "E-mail": c.email
             } for c in clientes]), use_container_width=True, hide_index=True)
 
+            st.markdown("#### ✏️ Editar cliente")
+            mapa_ed_cli = {f"{c.razao_social} • {c.cnpj}": c.id for c in clientes}
+            ed_cli_label = st.selectbox("Selecione o cliente para editar", list(mapa_ed_cli.keys()), key="editar_cliente_select")
+            ed_cli = s.query(Cliente).get(mapa_ed_cli[ed_cli_label])
+
+            with st.form("form_editar_cliente"):
+                e1, e2 = st.columns(2)
+                ed_cnpj = e1.text_input("CNPJ", value=ed_cli.cnpj or "")
+                ed_razao = e2.text_input("Razão Social", value=ed_cli.razao_social or "")
+                e3, e4 = st.columns(2)
+                ed_fantasia = e3.text_input("Nome Fantasia", value=ed_cli.nome_fantasia or "")
+                ed_ie = e4.text_input("Inscrição Estadual", value=ed_cli.inscricao_estadual or "")
+                e5, e6, e7 = st.columns([1,2,1])
+                ed_cep = e5.text_input("CEP", value=ed_cli.cep or "")
+                ed_logradouro = e6.text_input("Logradouro", value=ed_cli.logradouro or "")
+                ed_numero = e7.text_input("Número", value=ed_cli.numero or "")
+                e8, e9, e10 = st.columns([2,2,1])
+                ed_bairro = e8.text_input("Bairro", value=ed_cli.bairro or "")
+                ed_cidade = e9.text_input("Cidade", value=ed_cli.cidade or "")
+                ed_uf = e10.text_input("UF", value=ed_cli.uf or "")
+                ed_complemento = st.text_input("Complemento", value=ed_cli.complemento or "")
+                e11, e12, e13 = st.columns(3)
+                ed_telefone = e11.text_input("Telefone", value=ed_cli.telefone or "")
+                ed_email = e12.text_input("E-mail", value=ed_cli.email or "")
+                ed_responsavel = e13.text_input("Responsável", value=ed_cli.responsavel or "")
+                ed_ativo = st.checkbox("Cliente ativo", value=bool(ed_cli.ativo))
+                salvar_ed_cli = st.form_submit_button("💾 Salvar alterações", type="primary")
+
+                if salvar_ed_cli:
+                    novo_cnpj = formatar_cnpj(ed_cnpj)
+                    duplicado = s.query(Cliente).filter(
+                        Cliente.cnpj == novo_cnpj,
+                        Cliente.id != ed_cli.id
+                    ).first()
+                    if duplicado:
+                        st.error("Já existe outro cliente com esse CNPJ.")
+                    elif not ed_razao.strip():
+                        st.error("A Razão Social é obrigatória.")
+                    else:
+                        ed_cli.cnpj = novo_cnpj
+                        ed_cli.razao_social = ed_razao.strip()
+                        ed_cli.nome_fantasia = ed_fantasia
+                        ed_cli.inscricao_estadual = ed_ie
+                        ed_cli.cep = ed_cep
+                        ed_cli.logradouro = ed_logradouro
+                        ed_cli.numero = ed_numero
+                        ed_cli.bairro = ed_bairro
+                        ed_cli.cidade = ed_cidade
+                        ed_cli.uf = ed_uf
+                        ed_cli.complemento = ed_complemento
+                        ed_cli.telefone = ed_telefone
+                        ed_cli.email = ed_email
+                        ed_cli.responsavel = ed_responsavel
+                        ed_cli.ativo = ed_ativo
+                        s.commit()
+                        st.success("Cliente atualizado com sucesso.")
+                        st.rerun()
+
     elif menu == "Obras":
         cabecalho_pagina("Obras", "Organize as obras vinculadas a cada cliente e seus responsáveis.")
         clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
@@ -970,6 +1028,73 @@ try:
                 })
             st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
 
+            st.markdown("#### ✏️ Editar obra")
+            mapa_ed_obra = {}
+            for o in obras:
+                cli = s.query(Cliente).get(o.cliente_id)
+                mapa_ed_obra[f"{o.nome} • {cli.razao_social if cli else ''}"] = o.id
+
+            ed_obra_label = st.selectbox("Selecione a obra para editar", list(mapa_ed_obra.keys()), key="editar_obra_select")
+            ed_obra = s.query(Obra).get(mapa_ed_obra[ed_obra_label])
+
+            clientes_ed = s.query(Cliente).order_by(Cliente.razao_social).all()
+            mapa_clientes_ed = {f"{c.razao_social} • {c.cnpj}": c.id for c in clientes_ed}
+            labels_clientes_ed = list(mapa_clientes_ed.keys())
+            atual_cli_label = next((lab for lab, cid in mapa_clientes_ed.items() if cid == ed_obra.cliente_id), labels_clientes_ed[0])
+
+            with st.form("form_editar_obra"):
+                ed_cliente_label = st.selectbox(
+                    "Cliente",
+                    labels_clientes_ed,
+                    index=labels_clientes_ed.index(atual_cli_label)
+                )
+                ed_nome = st.text_input("Nome da obra", value=ed_obra.nome or "")
+                ed_codigo = st.text_input("Código da obra", value=ed_obra.codigo or "")
+                oe1, oe2, oe3 = st.columns([1,2,1])
+                ed_cep = oe1.text_input("CEP", value=ed_obra.cep or "")
+                ed_logradouro = oe2.text_input("Logradouro", value=ed_obra.logradouro or "")
+                ed_numero = oe3.text_input("Número", value=ed_obra.numero or "")
+                oe4, oe5, oe6 = st.columns([2,2,1])
+                ed_bairro = oe4.text_input("Bairro", value=ed_obra.bairro or "")
+                ed_cidade = oe5.text_input("Cidade", value=ed_obra.cidade or "")
+                ed_uf = oe6.text_input("UF", value=ed_obra.uf or "")
+                ed_complemento = st.text_input("Complemento", value=ed_obra.complemento or "")
+                oe7, oe8, oe9 = st.columns(3)
+                ed_responsavel = oe7.text_input("Responsável da obra", value=ed_obra.responsavel or "")
+                ed_telefone = oe8.text_input("Telefone", value=ed_obra.telefone or "")
+                ed_email = oe9.text_input("E-mail", value=ed_obra.email or "")
+                oe10, oe11 = st.columns(2)
+                ed_data_inicio = oe10.date_input("Data de início", value=ed_obra.data_inicio)
+                status_opcoes = ["Ativa", "Suspensa", "Finalizada"]
+                status_idx = status_opcoes.index(ed_obra.status) if ed_obra.status in status_opcoes else 0
+                ed_status = oe11.selectbox("Status", status_opcoes, index=status_idx)
+                ed_obs = st.text_area("Observações", value=ed_obra.observacoes or "")
+                salvar_ed_obra = st.form_submit_button("💾 Salvar alterações", type="primary")
+
+                if salvar_ed_obra:
+                    if not ed_nome.strip():
+                        st.error("Informe o nome da obra.")
+                    else:
+                        ed_obra.cliente_id = mapa_clientes_ed[ed_cliente_label]
+                        ed_obra.nome = ed_nome.strip()
+                        ed_obra.codigo = ed_codigo
+                        ed_obra.cep = ed_cep
+                        ed_obra.logradouro = ed_logradouro
+                        ed_obra.numero = ed_numero
+                        ed_obra.bairro = ed_bairro
+                        ed_obra.cidade = ed_cidade
+                        ed_obra.uf = ed_uf
+                        ed_obra.complemento = ed_complemento
+                        ed_obra.responsavel = ed_responsavel
+                        ed_obra.telefone = ed_telefone
+                        ed_obra.email = ed_email
+                        ed_obra.data_inicio = ed_data_inicio
+                        ed_obra.status = ed_status
+                        ed_obra.observacoes = ed_obs
+                        s.commit()
+                        st.success("Obra atualizada com sucesso.")
+                        st.rerun()
+
     elif menu == "Serviços":
         cabecalho_pagina("Serviços", "Gerencie o catálogo de ensaios, mobilizações, diárias e demais serviços.")
         with st.form("form_servico"):
@@ -1006,6 +1131,51 @@ try:
                 "Serviço": x.descricao, "Unidade": x.unidade,
                 "Valor padrão": float(x.valor_padrao or 0)
             } for x in servicos]), use_container_width=True, hide_index=True)
+
+            st.markdown("#### ✏️ Editar serviço")
+            mapa_ed_srv = {f"{x.codigo} • {x.descricao}": x.id for x in servicos}
+            ed_srv_label = st.selectbox("Selecione o serviço para editar", list(mapa_ed_srv.keys()), key="editar_servico_select")
+            ed_srv = s.query(Servico).get(mapa_ed_srv[ed_srv_label])
+
+            categorias = ["Concreto", "Solos", "Alvenaria", "Argamassa", "Mobilização", "Equipe", "Deslocamento", "Outros"]
+            cat_idx = categorias.index(ed_srv.categoria) if ed_srv.categoria in categorias else len(categorias)-1
+
+            with st.form("form_editar_servico"):
+                se1, se2 = st.columns(2)
+                ed_codigo = se1.text_input("Código", value=ed_srv.codigo or "")
+                ed_categoria = se2.selectbox("Categoria", categorias, index=cat_idx)
+                ed_descricao = st.text_input("Descrição do serviço", value=ed_srv.descricao or "")
+                se3, se4 = st.columns(2)
+                ed_unidade = se3.text_input("Unidade", value=ed_srv.unidade or "")
+                ed_valor_padrao = se4.number_input(
+                    "Valor padrão",
+                    min_value=0.0,
+                    value=float(ed_srv.valor_padrao or 0),
+                    step=1.0,
+                    format="%.2f"
+                )
+                ed_ativo = st.checkbox("Serviço ativo", value=bool(ed_srv.ativo))
+                salvar_ed_srv = st.form_submit_button("💾 Salvar alterações", type="primary")
+
+                if salvar_ed_srv:
+                    duplicado = s.query(Servico).filter(
+                        Servico.codigo == ed_codigo.strip(),
+                        Servico.id != ed_srv.id
+                    ).first()
+                    if duplicado:
+                        st.error("Já existe outro serviço com esse código.")
+                    elif not ed_codigo.strip() or not ed_descricao.strip() or not ed_unidade.strip():
+                        st.error("Código, descrição e unidade são obrigatórios.")
+                    else:
+                        ed_srv.codigo = ed_codigo.strip()
+                        ed_srv.categoria = ed_categoria
+                        ed_srv.descricao = ed_descricao.strip()
+                        ed_srv.unidade = ed_unidade.strip()
+                        ed_srv.valor_padrao = ed_valor_padrao
+                        ed_srv.ativo = ed_ativo
+                        s.commit()
+                        st.success("Serviço atualizado com sucesso.")
+                        st.rerun()
 
     elif menu == "Preços por cliente":
         cabecalho_pagina("Preços por cliente", "Defina valores comerciais por cliente, obra e período de vigência.")
@@ -1057,6 +1227,66 @@ try:
                 })
             if rows:
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+                st.markdown("#### ✏️ Editar preço cadastrado")
+                mapa_ed_preco = {}
+                for p in precos:
+                    srv = s.query(Servico).get(p.servico_id)
+                    obra = s.query(Obra).get(p.obra_id) if p.obra_id else None
+                    label = f"{srv.codigo if srv else ''} • {srv.descricao if srv else ''} • {obra.nome if obra else 'Todas as obras'} • {moeda(p.valor)}"
+                    mapa_ed_preco[label] = p.id
+
+                ed_preco_label = st.selectbox(
+                    "Selecione o preço para editar",
+                    list(mapa_ed_preco.keys()),
+                    key="editar_preco_select"
+                )
+                ed_preco = s.query(PrecoCliente).get(mapa_ed_preco[ed_preco_label])
+
+                servicos_ed = s.query(Servico).filter(Servico.ativo == True).order_by(Servico.descricao).all()
+                mapa_srv_ed = {f"{x.codigo} • {x.descricao} ({x.unidade})": x.id for x in servicos_ed}
+                labels_srv_ed = list(mapa_srv_ed.keys())
+                atual_srv_label = next((lab for lab, sid in mapa_srv_ed.items() if sid == ed_preco.servico_id), labels_srv_ed[0])
+
+                obras_ed = s.query(Obra).filter(Obra.cliente_id == cliente_id).order_by(Obra.nome).all()
+                mapa_obra_ed = {"Todas as obras (preço geral)": None}
+                mapa_obra_ed.update({o.nome: o.id for o in obras_ed})
+                labels_obra_ed = list(mapa_obra_ed.keys())
+                atual_obra_label = next((lab for lab, oid in mapa_obra_ed.items() if oid == ed_preco.obra_id), labels_obra_ed[0])
+
+                with st.form("form_editar_preco"):
+                    ed_srv_label = st.selectbox(
+                        "Serviço",
+                        labels_srv_ed,
+                        index=labels_srv_ed.index(atual_srv_label)
+                    )
+                    ed_obra_label = st.selectbox(
+                        "Obra",
+                        labels_obra_ed,
+                        index=labels_obra_ed.index(atual_obra_label)
+                    )
+                    ed_valor = st.number_input(
+                        "Valor",
+                        min_value=0.0,
+                        value=float(ed_preco.valor),
+                        step=1.0,
+                        format="%.2f"
+                    )
+                    pe1, pe2 = st.columns(2)
+                    ed_inicio = pe1.date_input("Vigência inicial", value=ed_preco.vigencia_inicio or date.today())
+                    ed_tem_fim = pe2.checkbox("Definir data final", value=ed_preco.vigencia_fim is not None)
+                    ed_fim = st.date_input("Vigência final", value=ed_preco.vigencia_fim or date.today()) if ed_tem_fim else None
+                    salvar_ed_preco = st.form_submit_button("💾 Salvar alterações", type="primary")
+
+                    if salvar_ed_preco:
+                        ed_preco.servico_id = mapa_srv_ed[ed_srv_label]
+                        ed_preco.obra_id = mapa_obra_ed[ed_obra_label]
+                        ed_preco.valor = ed_valor
+                        ed_preco.vigencia_inicio = ed_inicio
+                        ed_preco.vigencia_fim = ed_fim
+                        s.commit()
+                        st.success("Preço atualizado com sucesso.")
+                        st.rerun()
 
     elif menu == "Nova OS":
         cabecalho_pagina("Nova Ordem de Serviço", "Registre os serviços executados e gere a OS do cliente.")
