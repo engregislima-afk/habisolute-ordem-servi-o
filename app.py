@@ -2340,6 +2340,184 @@ try:
                         st.session_state[f"email_os_{o.id}"] = False
                         st.rerun()
 
+
+                st.markdown("---")
+
+                if st.button(
+                    "✏️ Editar OS",
+                    key=f"editar_os_btn_{o.id}",
+                    use_container_width=True
+                ):
+                    st.session_state[f"editar_os_aberta_{o.id}"] = not st.session_state.get(
+                        f"editar_os_aberta_{o.id}", False
+                    )
+
+                if st.session_state.get(f"editar_os_aberta_{o.id}", False):
+                    st.markdown("### ✏️ Editar Ordem de Serviço")
+                    st.caption(
+                        "Você pode alterar os dados gerais da OS e também as datas, "
+                        "quantidades e valores de cada serviço."
+                    )
+
+                    st.markdown("#### Dados gerais")
+                    g1, g2, g3 = st.columns(3)
+
+                    ed_data_os = g1.date_input(
+                        "Data da OS",
+                        value=o.data,
+                        key=f"edit_data_os_{o.id}"
+                    )
+
+                    status_opts = [
+                        "Aberta", "Executada", "Conferida",
+                        "Fechada", "Faturada", "Recebida"
+                    ]
+                    status_idx = status_opts.index(o.status) if o.status in status_opts else 0
+                    ed_status_os = g2.selectbox(
+                        "Status",
+                        status_opts,
+                        index=status_idx,
+                        key=f"edit_status_os_{o.id}"
+                    )
+
+                    ed_solicitante = g3.text_input(
+                        "Solicitante",
+                        value=o.solicitante or "",
+                        key=f"edit_solicitante_os_{o.id}"
+                    )
+
+                    g4, g5, g6 = st.columns(3)
+                    ed_resp = g4.text_input(
+                        "Responsável Habisolute",
+                        value=o.responsavel_habisolute or "",
+                        key=f"edit_resp_os_{o.id}"
+                    )
+                    ed_pedido = g5.text_input(
+                        "Pedido de compra",
+                        value=o.pedido_compra or "",
+                        key=f"edit_pedido_os_{o.id}"
+                    )
+                    ed_ccusto = g6.text_input(
+                        "Centro de custo",
+                        value=o.centro_custo or "",
+                        key=f"edit_ccusto_os_{o.id}"
+                    )
+
+                    ed_obs = st.text_area(
+                        "Observações",
+                        value=o.observacoes or "",
+                        key=f"edit_obs_os_{o.id}"
+                    )
+
+                    st.markdown("#### Serviços da OS")
+                    itens_edit = (
+                        s.query(ItemOS)
+                        .filter(ItemOS.os_id == o.id)
+                        .order_by(ItemOS.id.asc())
+                        .all()
+                    )
+
+                    rows_edit = []
+                    for item in itens_edit:
+                        srv = s.query(Servico).get(item.servico_id)
+                        rows_edit.append({
+                            "ID": item.id,
+                            "Data do serviço": item.data_servico or o.data,
+                            "Código": srv.codigo if srv else "",
+                            "Serviço": item.descricao_customizada or (srv.descricao if srv else ""),
+                            "Quantidade": float(item.quantidade),
+                            "Unidade": srv.unidade if srv else "",
+                            "Valor unitário": float(item.valor_unitario),
+                            "Total": float(item.quantidade) * float(item.valor_unitario),
+                        })
+
+                    df_edit = pd.DataFrame(rows_edit)
+
+                    edited_df = st.data_editor(
+                        df_edit,
+                        use_container_width=True,
+                        hide_index=True,
+                        num_rows="fixed",
+                        disabled=["ID", "Código", "Unidade", "Total"],
+                        column_config={
+                            "ID": None,
+                            "Data do serviço": st.column_config.DateColumn(
+                                "Data do serviço",
+                                format="DD/MM/YYYY"
+                            ),
+                            "Código": st.column_config.TextColumn("Código"),
+                            "Serviço": st.column_config.TextColumn("Serviço"),
+                            "Quantidade": st.column_config.NumberColumn(
+                                "Quantidade",
+                                min_value=0.01,
+                                step=1.0,
+                                format="%.2f"
+                            ),
+                            "Unidade": st.column_config.TextColumn("Unidade"),
+                            "Valor unitário": st.column_config.NumberColumn(
+                                "Valor unitário",
+                                min_value=0.0,
+                                step=1.0,
+                                format="R$ %.2f"
+                            ),
+                            "Total": st.column_config.NumberColumn(
+                                "Total",
+                                format="R$ %.2f"
+                            ),
+                        },
+                        key=f"editor_itens_os_{o.id}"
+                    )
+
+                    st.caption(
+                        "O campo Total é recalculado automaticamente depois que você salvar."
+                    )
+
+                    csave, ccancel = st.columns(2)
+
+                    if csave.button(
+                        "💾 Salvar alterações da OS",
+                        key=f"salvar_edicao_os_{o.id}",
+                        type="primary",
+                        use_container_width=True
+                    ):
+                        try:
+                            o.data = ed_data_os
+                            o.status = ed_status_os
+                            o.solicitante = ed_solicitante
+                            o.responsavel_habisolute = ed_resp
+                            o.pedido_compra = ed_pedido
+                            o.centro_custo = ed_ccusto
+                            o.observacoes = ed_obs
+
+                            for _, linha in edited_df.iterrows():
+                                item_db = s.query(ItemOS).get(int(linha["ID"]))
+                                if item_db and item_db.os_id == o.id:
+                                    data_val = linha["Data do serviço"]
+                                    if hasattr(data_val, "date"):
+                                        data_val = data_val.date()
+
+                                    item_db.data_servico = data_val
+                                    item_db.descricao_customizada = str(linha["Serviço"]).strip()
+                                    item_db.quantidade = float(linha["Quantidade"])
+                                    item_db.valor_unitario = float(linha["Valor unitário"])
+
+                            s.commit()
+                            st.session_state[f"editar_os_aberta_{o.id}"] = False
+                            st.success("OS atualizada com sucesso.")
+                            st.rerun()
+
+                        except Exception as exc:
+                            s.rollback()
+                            st.error(f"Não foi possível salvar as alterações: {exc}")
+
+                    if ccancel.button(
+                        "Cancelar edição",
+                        key=f"cancelar_edicao_os_{o.id}",
+                        use_container_width=True
+                    ):
+                        st.session_state[f"editar_os_aberta_{o.id}"] = False
+                        st.rerun()
+
     elif menu == "Fechamento mensal":
         cabecalho_pagina("Fechamento mensal", "Consolide as OS do período por cliente e obra.")
         clientes = s.query(Cliente).order_by(Cliente.razao_social).all()
