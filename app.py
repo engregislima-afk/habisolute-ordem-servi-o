@@ -1279,7 +1279,7 @@ def gerar_pdf_fechamento(s, ordens, inicio, fim, cliente_id=None, obra_id=None):
     story.append(Paragraph("RESUMO POR ORDEM DE SERVIÇO", styles["section"]))
     resumo_header = ["OS", "DATA", "OBRA", "STATUS", "TOTAL"]
     resumo_data = [[_safe_paragraph(x, styles["white"]) for x in resumo_header]] + resumo_os
-    tr = Table(resumo_data, colWidths=[35*mm, 30*mm, 115*mm, 38*mm, 42*mm], repeatRows=1)
+    tr = Table(resumo_data, colWidths=[35*mm, 30*mm, 115*mm, 38*mm, 42*mm], repeatRows=1, hAlign="LEFT")
     tr.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), preto),
         ("TEXTCOLOR", (0,0), (-1,0), colors.white),
@@ -1314,8 +1314,21 @@ def gerar_pdf_fechamento(s, ordens, inicio, fim, cliente_id=None, obra_id=None):
 
     td = Table(
         det_data,
-        colWidths=[23*mm, 22*mm, 24*mm, 40*mm, 38*mm, 18*mm, 58*mm, 15*mm, 15*mm, 25*mm, 27*mm],
-        repeatRows=1
+        colWidths=[
+            20*mm,  # OS
+            20*mm,  # Data OS
+            22*mm,  # Data serviço
+            34*mm,  # Cliente
+            31*mm,  # Obra
+            16*mm,  # Código
+            45*mm,  # Serviço
+            14*mm,  # Quantidade
+            14*mm,  # Unidade
+            24*mm,  # Unitário
+            25*mm,  # Total
+        ],
+        repeatRows=1,
+        hAlign="LEFT"
     )
     td.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (-1,0), preto),
@@ -1325,7 +1338,10 @@ def gerar_pdf_fechamento(s, ordens, inicio, fim, cliente_id=None, obra_id=None):
         ("INNERGRID", (0,1), (-1,-1), 0.3, borda),
         ("ALIGN", (7,1), (-1,-1), "RIGHT"),
         ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ("FONTSIZE", (0,1), (-1,-1), 6.7),
+        ("FONTSIZE", (0,1), (-1,-1), 5.8),
+        ("FONTSIZE", (0,0), (-1,0), 6.1),
+        ("LEFTPADDING", (0,0), (-1,-1), 3),
+        ("RIGHTPADDING", (0,0), (-1,-1), 3),
         ("TOPPADDING", (0,0), (-1,-1), 4),
         ("BOTTOMPADDING", (0,0), (-1,-1), 4),
     ]))
@@ -1337,7 +1353,7 @@ def gerar_pdf_fechamento(s, ordens, inicio, fim, cliente_id=None, obra_id=None):
             _safe_paragraph("TOTAL DO FECHAMENTO", styles["white"]),
             _safe_paragraph(moeda(total_geral), styles["white"])
         ]
-    ], colWidths=[205*mm, 55*mm])
+    ], colWidths=[205*mm, 55*mm], hAlign="LEFT")
     total_box.setStyle(TableStyle([
         ("BACKGROUND", (0,0), (0,0), preto),
         ("BACKGROUND", (1,0), (1,0), laranja),
